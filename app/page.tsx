@@ -19,7 +19,7 @@ export default async function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-950">
-      <p className="text-5xl font-light tracking-widest text-white">{label}</p>
+      <p className="text-5xl font-light tracking-widest text-white">Hello Vicki</p>
       {error && (
         <p className="mt-4 text-sm text-gray-500">{error}</p>
       )}
