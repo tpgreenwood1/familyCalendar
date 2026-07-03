@@ -15,7 +15,7 @@ async function getLabel(): Promise<{ label: string; error?: string }> {
 }
 
 export default async function Home() {
-  const { label, error } = await getLabel();
+  const { error } = await getLabel();
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gray-950">
