@@ -13,3 +13,47 @@ model AppConfig {
   key   String @unique
   value String
 }
+
+model FamilyGroup {
+  id         Int          @id @default(autoincrement())
+  name       String
+  inviteCode String       @unique
+  createdAt  DateTime     @default(now())
+  users       User[]
+  familyUsers FamilyUser[]
+}
+
+model User {
+  id            Int         @id @default(autoincrement())
+  email         String      @unique
+  passwordHash  String
+  familyGroupId Int
+  familyGroup   FamilyGroup @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@index([familyGroupId])
+}
+
+model FamilyUser {
+  id            Int         @id @default(autoincrement())
+  name          String
+  color         String
+  createdAt     DateTime    @default(now())
+  familyGroupId Int
+  familyGroup   FamilyGroup @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  todos         Todo[]
+
+  @@unique([familyGroupId, name], name: "familyGroupId_name")
+  @@index([familyGroupId])
+}
+
+model Todo {
+  id         Int        @id @default(autoincrement())
+  text       String
+  completed  Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+  userId     Int
+  familyUser FamilyUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
