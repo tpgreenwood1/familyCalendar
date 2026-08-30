@@ -1,46 +1,30 @@
-import NextAuth from "next-auth";
-import Credentials from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { authConfig } from "@/lib/auth.config";
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "@/lib/prisma";
+import { hashPassword, verifyPassword } from "@/lib/password";
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  ...authConfig,
-  providers: [
-    Credentials({
-      credentials: {
-        email: {},
-        password: {},
-      },
-      async authorize(credentials) {
-        const email =
-          typeof credentials?.email === "string" ? credentials.email.trim().toLowerCase() : "";
-        const password = typeof credentials?.password === "string" ? credentials.password : "";
-        if (!email || !password) return null;
-
-        const user = await prisma.user.findUnique({ where: { email } });
-        if (!user) return null;
-
-        const valid = await bcrypt.compare(password, user.passwordHash);
-        if (!valid) return null;
-
-        return { id: String(user.id), email: user.email, familyGroupId: user.familyGroupId };
-      },
-    }),
-  ],
-  callbacks: {
-    ...authConfig.callbacks,
-    async jwt({ token, user }) {
-      if (user) {
-        token.familyGroupId = (user as { familyGroupId: number }).familyGroupId;
-      }
-      return token;
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, {
+    provider: "postgresql",
+  }),
+  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL,
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 8,
+    password: {
+      hash: hashPassword,
+      verify: verifyPassword,
     },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.familyGroupId = token.familyGroupId as number;
-      }
-      return session;
-    },
+  },
+  // The kiosk tablet stays signed in indefinitely (mirrors the previous NextAuth
+  // 1-year sliding session — see git history of lib/auth.config.ts).
+  session: {
+    expiresIn: 60 * 60 * 24 * 365,
+    updateAge: 60 * 60 * 24,
+  },
+  rateLimit: {
+    enabled: true,
+    storage: "database",
   },
 });

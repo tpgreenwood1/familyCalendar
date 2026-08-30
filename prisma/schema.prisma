@@ -15,15 +15,32 @@ model AppConfig {
 }
 
 model FamilyGroup {
-  id         Int          @id @default(autoincrement())
-  name       String
-  inviteCode String       @unique
-  createdAt  DateTime     @default(now())
-  users       User[]
-  familyUsers FamilyUser[]
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  timezone           String              @default("Europe/London")
+  /// Simple household-wide holiday toggle (DesignSpec.md §15.4). V1 only supports the
+  /// "disable" behaviour: RoutineSchedule.activeDuringHoliday decides which routines still
+  /// generate occurrences while this is on -- see generateRoutineOccurrences in lib/routines.ts.
+  holidayMode        Boolean             @default(false)
+  createdAt          DateTime            @default(now())
+  legacyUsers        LegacyUser[]
+  familyMembers      FamilyMember[]
+  familyMemberships  FamilyMembership[]
+  invitations        Invitation[]
+  calendarEvents     CalendarEvent[]
+  chores             Chore[]
+  choreOccurrences   ChoreOccurrence[]
+  routines           Routine[]
+  routineOccurrences RoutineOccurrence[]
+  shoppingList       ShoppingList?
 }
 
-model User {
+/// Pre-Better-Auth NextAuth user table (DesignSpec.md §6.1 migration step 2/3).
+/// Renamed out of the way so Better Auth's Prisma adapter can own the `User` model name.
+/// Kept (unused by app code) as a historical record until scripts/migrate-legacy-users.ts
+/// has been run and verified — see docs/AUTH.md.
+
+model LegacyUser {
   id            Int         @id @default(autoincrement())
   email         String      @unique
   passwordHash  String
@@ -34,26 +51,403 @@ model User {
   @@index([familyGroupId])
 }
 
-model FamilyUser {
-  id            Int         @id @default(autoincrement())
-  name          String
-  color         String
-  createdAt     DateTime    @default(now())
-  familyGroupId Int
-  familyGroup   FamilyGroup @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
-  todos         Todo[]
+enum FamilyMemberRole {
+  ADULT
+  CHILD
+}
+
+/// The person in the household (DesignSpec.md §5.3) — distinct from `User`, the login
+/// account (§4.2). Adults have both: a `User`/`FamilyMembership` for auth, plus a
+/// `FamilyMember` card (`linkedUserId` ties the two together) so they show up alongside
+/// children in the family roster. Children have a `FamilyMember` row only, no account.
+model FamilyMember {
+  id                  Int                 @id @default(autoincrement())
+  name                String
+  color               String
+  role                FamilyMemberRole    @default(CHILD)
+  avatar              String              @default("star")
+  dateOfBirth         DateTime?
+  active              Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  familyGroupId       Int
+  familyGroup         FamilyGroup         @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  linkedUserId        String?             @unique
+  linkedUser          User?               @relation(fields: [linkedUserId], references: [id], onDelete: SetNull)
+  todos               Todo[]
+  eventParticipations EventParticipant[]
+  choreSchedules      ChoreSchedule[]
+  choreOccurrences    ChoreOccurrence[]
+  routines            Routine[]
+  routineOccurrences  RoutineOccurrence[]
 
   @@unique([familyGroupId, name], name: "familyGroupId_name")
   @@index([familyGroupId])
 }
 
 model Todo {
-  id         Int        @id @default(autoincrement())
-  text       String
-  completed  Boolean    @default(false)
-  createdAt  DateTime   @default(now())
-  userId     Int
-  familyUser FamilyUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           Int          @id @default(autoincrement())
+  text         String
+  completed    Boolean      @default(false)
+  priority     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  userId       Int
+  familyMember FamilyMember @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model User {
+  id                    String            @id
+  name                  String
+  email                 String
+  emailVerified         Boolean           @default(false)
+  image                 String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  sessions              Session[]
+  accounts              Account[]
+  familyMembership      FamilyMembership?
+  familyMember          FamilyMember?
+  createdInvitations    Invitation[]      @relation("InvitationCreatedBy")
+  usedInvitations       Invitation[]      @relation("InvitationUsedBy")
+  createdCalendarEvents CalendarEvent[]   @relation("CalendarEventCreatedBy")
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  issuer                String
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([issuer, accountId], map: "account_issuer_accountId_uidx")
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model RateLimit {
+  id          String @id
+  key         String
+  count       Int
+  lastRequest BigInt
+
+  @@unique([key])
+  @@map("rateLimit")
+}
+
+/// Links a Better Auth User to the Family/FamilyGroup they belong to (DesignSpec.md §5.4,
+/// §6.2). Unique on userId, not a composite key, because §5.1/§30 keep "one adult, one
+/// family" for now — multi-family membership is explicitly out of scope.
+model FamilyMembership {
+  id            String      @id @default(cuid())
+  userId        String      @unique
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyGroupId Int
+  familyGroup   FamilyGroup @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@index([familyGroupId])
+}
+
+/// Replaces FamilyGroup.inviteCode (DesignSpec.md §7): hashed, expiring, single-use codes
+/// instead of a permanent plaintext code shared by the whole family.
+model Invitation {
+  id              String      @id @default(cuid())
+  familyGroupId   Int
+  familyGroup     FamilyGroup @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  createdByUserId String
+  createdBy       User        @relation("InvitationCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  codeHash        String      @unique
+  createdAt       DateTime    @default(now())
+  expiresAt       DateTime
+  usedAt          DateTime?
+  usedByUserId    String?
+  usedBy          User?       @relation("InvitationUsedBy", fields: [usedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([familyGroupId])
+}
+
+/// Minimal DB-backed rate limiting for the invite-code join endpoint (DesignSpec.md §27),
+/// keyed by a caller-chosen string (e.g. normalized email). Better Auth's own `rateLimit`
+/// table (above) covers its built-in sign-in/sign-up endpoints separately.
+model InviteAttempt {
+  id        String   @id @default(cuid())
+  key       String
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+/// A shared family calendar event (DesignSpec.md §10). Recurring events store an
+/// RFC5545 RRULE fragment in `rrule` (built by lib/recurrence.ts from a simple
+/// preset) instead of persisted occurrence rows -- per §10.5, per-occurrence
+/// edit/exclusion is a future phase, so editing/deleting always applies to the
+/// whole series and occurrences are expanded on read.
+model CalendarEvent {
+  id              Int                @id @default(autoincrement())
+  title           String
+  notes           String?
+  location        String?
+  startAt         DateTime
+  endAt           DateTime
+  allDay          Boolean            @default(false)
+  rrule           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  familyGroupId   Int
+  familyGroup     FamilyGroup        @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  createdByUserId String
+  createdBy       User               @relation("CalendarEventCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  participants    EventParticipant[]
+
+  @@index([familyGroupId, startAt])
+}
+
+/// Join table (DesignSpec.md §10.2) -- an event is never modeled as belonging to a
+/// single person, so this always mediates CalendarEvent<->FamilyMember instead of a
+/// single owner column.
+model EventParticipant {
+  id             Int           @id @default(autoincrement())
+  eventId        Int
+  event          CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  familyMemberId Int
+  familyMember   FamilyMember  @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, familyMemberId])
+  @@index([eventId])
+  @@index([familyMemberId])
+}
+
+enum ChoreOccurrenceStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+}
+
+/// A recurring household responsibility (DesignSpec.md §13) -- deliberately not a Todo:
+/// a Chore is a definition that generates daily ChoreOccurrences, rather than a single
+/// item to complete once.
+model Chore {
+  id            Int               @id @default(autoincrement())
+  title         String
+  description   String?
+  active        Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  familyGroupId Int
+  familyGroup   FamilyGroup       @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  schedules     ChoreSchedule[]
+  occurrences   ChoreOccurrence[]
+
+  @@index([familyGroupId])
+}
+
+/// V1 (§13.2/§13.6) supports exactly one schedule per Chore -- a single assignee plus a
+/// fixed set of applicable weekdays. No rotation, no per-occurrence reassignment. The
+/// table stays separate from Chore (matching the spec's domain model) so a future phase
+/// can add multiple schedules/rotation without a schema change.
+model ChoreSchedule {
+  id             Int          @id @default(autoincrement())
+  choreId        Int
+  chore          Chore        @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  familyMemberId Int
+  familyMember   FamilyMember @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  /// Day-of-week set this schedule applies to, using JS Date#getDay() convention
+  /// (0 = Sunday .. 6 = Saturday) to stay consistent with lib/calendarViewRange.ts.
+  daysOfWeek     Int[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([choreId])
+}
+
+/// One day's instance of a Chore (§13.3), generated idempotently by
+/// generateChoreOccurrences (§13.4) -- completing/skipping an occurrence never touches
+/// the ChoreSchedule that produced it (§13.5). familyGroupId is denormalized from
+/// Chore.familyGroupId so the family+date index the spec calls for (§25) doesn't need a join.
+model ChoreOccurrence {
+  id             Int                   @id @default(autoincrement())
+  choreId        Int
+  chore          Chore                 @relation(fields: [choreId], references: [id], onDelete: Cascade)
+  familyGroupId  Int
+  familyGroup    FamilyGroup           @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  familyMemberId Int
+  familyMember   FamilyMember          @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  date           DateTime
+  status         ChoreOccurrenceStatus @default(PENDING)
+  completedAt    DateTime?
+  skippedAt      DateTime?
+  createdAt      DateTime              @default(now())
+
+  @@unique([choreId, familyMemberId, date])
+  @@index([familyGroupId, date])
+  @@index([familyMemberId, date])
+}
+
+enum RoutinePeriod {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+/// A structured repeated activity for one family member (DesignSpec.md §15) -- distinct
+/// from a Chore: a Routine is a named, ordered checklist ("Morning", "After School") that
+/// resets daily via RoutineOccurrence, not a single recurring responsibility. V1 (§15.1) is
+/// exactly one schedule per Routine, mirroring ChoreSchedule's one-schedule-per-Chore shape.
+model Routine {
+  id             Int                 @id @default(autoincrement())
+  name           String
+  period         RoutinePeriod
+  active         Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  familyGroupId  Int
+  familyGroup    FamilyGroup         @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  familyMemberId Int
+  familyMember   FamilyMember        @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  schedule       RoutineSchedule?
+  items          RoutineItem[]
+  occurrences    RoutineOccurrence[]
+
+  @@index([familyGroupId])
+  @@index([familyMemberId])
+}
+
+/// When a Routine applies (§15.1's "different routines for different days"/"weekday vs
+/// weekend"), kept in its own table for the same reason as ChoreSchedule -- so a future
+/// phase could add rotation without a migration. `activeDuringHoliday` is the data-model
+/// hook §15.4 asks for ("the data model should allow both" disabling or an alternative
+/// schedule): V1 only implements "disable", so a schedule defaulting to false is skipped
+/// whenever FamilyGroup.holidayMode is on; flipping it to true opts a specific routine out
+/// of that default.
+model RoutineSchedule {
+  id                  Int      @id @default(autoincrement())
+  routineId           Int      @unique
+  routine             Routine  @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  /// Same JS Date#getDay() convention (0 = Sunday..6 = Saturday) as ChoreSchedule.daysOfWeek.
+  daysOfWeek          Int[]
+  activeDuringHoliday Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+/// One checklist entry within a Routine (e.g. "Get dressed"). `order` is set from the
+/// entry's position when items are saved -- V1 always replaces the whole item list on
+/// update rather than patching individual items (see updateRoutine in lib/routines.ts).
+model RoutineItem {
+  id          Int                     @id @default(autoincrement())
+  routineId   Int
+  routine     Routine                 @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  title       String
+  order       Int                     @default(0)
+  createdAt   DateTime                @default(now())
+  completions RoutineItemCompletion[]
+
+  @@index([routineId])
+}
+
+/// One day's instance of a Routine (§15.2), generated idempotently by
+/// generateRoutineOccurrences the same way ChoreOccurrence is -- unique on
+/// (routineId, date) since a Routine already implies a single assignee, so no separate
+/// familyMemberId is needed in the key. familyGroupId/familyMemberId are denormalized from
+/// Routine for the same family+date index reason as ChoreOccurrence.
+model RoutineOccurrence {
+  id             Int                     @id @default(autoincrement())
+  routineId      Int
+  routine        Routine                 @relation(fields: [routineId], references: [id], onDelete: Cascade)
+  familyGroupId  Int
+  familyGroup    FamilyGroup             @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  familyMemberId Int
+  familyMember   FamilyMember            @relation(fields: [familyMemberId], references: [id], onDelete: Cascade)
+  date           DateTime
+  createdAt      DateTime                @default(now())
+  completions    RoutineItemCompletion[]
+
+  @@unique([routineId, date])
+  @@index([familyGroupId, date])
+  @@index([familyMemberId, date])
+}
+
+/// Tick/check completion state (§15.1) for one item on one day's occurrence. A row's mere
+/// existence means "checked" -- ticking creates it, unticking deletes it, so there's no
+/// separate boolean to keep in sync.
+model RoutineItemCompletion {
+  id                  Int               @id @default(autoincrement())
+  routineOccurrenceId Int
+  routineOccurrence   RoutineOccurrence @relation(fields: [routineOccurrenceId], references: [id], onDelete: Cascade)
+  routineItemId       Int
+  routineItem         RoutineItem       @relation(fields: [routineItemId], references: [id], onDelete: Cascade)
+  completedAt         DateTime          @default(now())
+
+  @@unique([routineOccurrenceId, routineItemId])
+}
+
+/// The family's shared grocery list (DesignSpec.md §16) -- kept as its own table (rather
+/// than items hanging directly off FamilyGroup) so the explicitly-future "multiple lists"
+/// option doesn't need a schema change, even though V1 enforces exactly one list per family
+/// via the unique familyGroupId below and lib/shopping.ts's getOrCreateShoppingList.
+model ShoppingList {
+  id            Int            @id @default(autoincrement())
+  familyGroupId Int            @unique
+  familyGroup   FamilyGroup    @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+  items         ShoppingItem[]
+}
+
+/// One entry on the shared list (§16). V1 is deliberately minimal -- no quantity,
+/// category, or store (all explicitly future) -- so `checked` is the only mutable state
+/// besides the name; unchecking just flips it back rather than deleting/recreating the row.
+model ShoppingItem {
+  id             Int          @id @default(autoincrement())
+  shoppingListId Int
+  shoppingList   ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  name           String
+  checked        Boolean      @default(false)
+  checkedAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([shoppingListId])
 }

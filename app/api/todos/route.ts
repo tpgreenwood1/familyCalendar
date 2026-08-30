@@ -1,45 +1,47 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireSession, requireCan } from "@/lib/authz";
+import { todoCreateSchema } from "@/lib/schemas";
+import { ApiError, errorResponse } from "@/lib/api-errors";
+import { publishDomainEvent } from "@/lib/realtime";
 
 export async function GET() {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    const ctx = await requireSession();
 
-  const todos = await prisma.todo.findMany({
-    where: { familyUser: { familyGroupId: session.user.familyGroupId } },
-    orderBy: { createdAt: "asc" },
-  });
+    const todos = await prisma.todo.findMany({
+      where: { familyMember: { familyGroupId: ctx.familyGroupId } },
+      orderBy: { createdAt: "asc" },
+    });
 
-  return NextResponse.json(todos);
+    return NextResponse.json(todos);
+  } catch (error) {
+    return errorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    const ctx = await requireSession();
+    requireCan(ctx, "todo.manage");
 
-  const { text, userId } = await request.json();
+    const { text, userId, priority } = todoCreateSchema.parse(await request.json());
 
-  const normalized = typeof text === "string" ? text.trim().replace(/\s+/g, " ") : "";
+    const owner = await prisma.familyMember.findFirst({
+      where: { id: userId, familyGroupId: ctx.familyGroupId },
+    });
+    if (!owner) {
+      throw new ApiError(400, "userId is required");
+    }
 
-  if (!normalized) {
-    return NextResponse.json({ error: "text is required" }, { status: 400 });
+    const todo = await prisma.todo.create({
+      data: { text, userId, priority: priority ?? false },
+    });
+
+    publishDomainEvent({ type: "TODO_CREATED", familyGroupId: ctx.familyGroupId });
+
+    return NextResponse.json(todo, { status: 201 });
+  } catch (error) {
+    return errorResponse(error);
   }
-
-  if (typeof userId !== "number" || !Number.isInteger(userId)) {
-    return NextResponse.json({ error: "userId is required" }, { status: 400 });
-  }
-
-  const owner = await prisma.familyUser.findFirst({
-    where: { id: userId, familyGroupId: session.user.familyGroupId },
-  });
-  if (!owner) {
-    return NextResponse.json({ error: "userId is required" }, { status: 400 });
-  }
-
-  const todo = await prisma.todo.create({
-    data: { text: normalized, userId },
-  });
-
-  return NextResponse.json(todo, { status: 201 });
 }

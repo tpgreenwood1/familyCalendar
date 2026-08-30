@@ -1,81 +1,126 @@
 "use client";
 
 import { useState } from "react";
-import type { FamilyUser, Todo } from "@prisma/client";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { FamilyMember, Todo } from "@prisma/client";
 import TodoColumn from "@/components/TodoColumn";
+import { subscribeToFamilyEvents } from "@/lib/realtime";
+
+type TodoPatch = { text?: string; completed?: boolean; priority?: boolean };
+
+async function fetchTodos(): Promise<Todo[]> {
+  const res = await fetch("/api/todos");
+  if (!res.ok) throw new Error("Could not load to-dos");
+  return res.json();
+}
 
 export default function TodoBoard({
   initialTodos,
-  familyUsers,
+  familyMembers,
 }: {
   initialTodos: Todo[];
-  familyUsers: FamilyUser[];
+  familyMembers: FamilyMember[];
 }) {
-  const [todos, setTodos] = useState<Todo[]>(initialTodos);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
-  async function handleAddTodo(userId: number, text: string): Promise<boolean> {
-    try {
+  const { data: todos = [] } = useQuery({
+    queryKey: ["todos"],
+    queryFn: fetchTodos,
+    initialData: initialTodos,
+    refetchInterval: subscribeToFamilyEvents(),
+  });
+
+  const addTodo = useMutation({
+    mutationFn: async ({ userId, text }: { userId: number; text: string }) => {
       const res = await fetch("/api/todos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, userId }),
       });
       if (!res.ok) throw new Error();
-      const todo: Todo = await res.json();
-      setTodos((prev) => [...prev, todo]);
+      return (await res.json()) as Todo;
+    },
+    onSuccess: (todo) => {
+      queryClient.setQueryData<Todo[]>(["todos"], (prev = []) => [...prev, todo]);
       setError(null);
+    },
+    onError: () => setError("Could not add item. Please try again."),
+  });
+
+  const updateTodo = useMutation({
+    mutationFn: async ({ id, patch }: { id: number; patch: TodoPatch }) => {
+      const res = await fetch(`/api/todos/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error();
+    },
+    onMutate: async ({ id, patch }) => {
+      const previous = queryClient.getQueryData<Todo[]>(["todos"]) ?? [];
+      queryClient.setQueryData<Todo[]>(["todos"], (prev = []) =>
+        prev.map((t) => (t.id === id ? { ...t, ...patch } : t))
+      );
+      return { previous };
+    },
+    onSuccess: () => setError(null),
+    onError: (_err, _vars, context) => {
+      if (context) queryClient.setQueryData(["todos"], context.previous);
+      setError("Could not update item. Please try again.");
+    },
+  });
+
+  const deleteTodo = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/todos/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+    },
+    onMutate: async (id) => {
+      const previous = queryClient.getQueryData<Todo[]>(["todos"]) ?? [];
+      queryClient.setQueryData<Todo[]>(["todos"], (prev = []) =>
+        prev.filter((t) => t.id !== id)
+      );
+      return { previous };
+    },
+    onSuccess: () => setError(null),
+    onError: (_err, _id, context) => {
+      if (context) queryClient.setQueryData(["todos"], context.previous);
+      setError("Could not delete item. Please try again.");
+    },
+  });
+
+  async function handleAddTodo(userId: number, text: string): Promise<boolean> {
+    try {
+      await addTodo.mutateAsync({ userId, text });
       return true;
     } catch {
-      setError("Could not add item. Please try again.");
       return false;
     }
   }
 
-  async function handleToggleTodo(id: number, completed: boolean) {
-    setTodos((prev) => prev.map((t) => (t.id === id ? { ...t, completed } : t)));
-
+  async function handleEditTodo(id: number, text: string): Promise<boolean> {
     try {
-      const res = await fetch(`/api/todos/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ completed }),
-      });
-      if (!res.ok) throw new Error();
-      setError(null);
+      await updateTodo.mutateAsync({ id, patch: { text } });
+      return true;
     } catch {
-      setTodos((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, completed: !completed } : t))
-      );
-      setError("Could not update item. Please try again.");
-    }
-  }
-
-  async function handleDeleteTodo(id: number) {
-    const prevTodos = todos;
-    setTodos((prev) => prev.filter((t) => t.id !== id));
-
-    try {
-      const res = await fetch(`/api/todos/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      setError(null);
-    } catch {
-      setTodos(prevTodos);
-      setError("Could not delete item. Please try again.");
+      return false;
     }
   }
 
   return (
     <div className="w-full">
       <div className="flex w-full gap-6 overflow-x-auto pb-4">
-        {familyUsers.map((user) => (
+        {familyMembers.map((member) => (
           <TodoColumn
-            key={user.id}
-            user={user}
-            todos={todos.filter((t) => t.userId === user.id)}
+            key={member.id}
+            member={member}
+            todos={todos.filter((t) => t.userId === member.id)}
             onAdd={handleAddTodo}
-            onToggle={handleToggleTodo}
-            onDelete={handleDeleteTodo}
+            onEdit={handleEditTodo}
+            onToggle={(id, completed) => updateTodo.mutate({ id, patch: { completed } })}
+            onTogglePriority={(id, priority) => updateTodo.mutate({ id, patch: { priority } })}
+            onDelete={(id) => deleteTodo.mutate(id)}
           />
         ))}
       </div>

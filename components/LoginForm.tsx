@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { authClient } from "@/lib/auth-client";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -15,6 +15,7 @@ export default function LoginForm() {
   const [mode, setMode] = useState<Mode>("login");
   const [signupMode, setSignupMode] = useState<SignupMode>("create");
 
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -48,12 +49,11 @@ export default function LoginForm() {
 
     setIsSubmitting(true);
     try {
-      const result = await signIn("credentials", {
+      const { error: signInError } = await authClient.signIn.email({
         email: normalizedEmail,
         password,
-        redirect: false,
       });
-      if (result?.error) {
+      if (signInError) {
         setError("Incorrect email or password");
         return;
       }
@@ -68,6 +68,10 @@ export default function LoginForm() {
     setError(null);
 
     const normalizedEmail = email.trim().toLowerCase();
+    if (!name.trim()) {
+      setError("Enter your name");
+      return;
+    }
     if (!EMAIL_RE.test(normalizedEmail)) {
       setError("Enter a valid email");
       return;
@@ -91,33 +95,32 @@ export default function LoginForm() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: signupMode,
-          email: normalizedEmail,
-          password,
-          familyGroupName,
-          inviteCode,
-        }),
+      const { error: signUpError } = await authClient.signUp.email({
+        name: name.trim(),
+        email: normalizedEmail,
+        password,
       });
-      const body = await res.json();
-      if (!res.ok) {
-        setError(body.error ?? "Could not create account. Please try again.");
+      if (signUpError) {
+        setError(signUpError.message ?? "Could not create account. Please try again.");
         return;
       }
 
-      const result = await signIn("credentials", {
-        email: normalizedEmail,
-        password,
-        redirect: false,
+      // The account (and session) now exist — attaching it to a family is a separate step,
+      // so a failure here doesn't lose the account; /family-setup lets the user retry it.
+      const setupRes = await fetch("/api/family/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          signupMode === "create"
+            ? { mode: "create", familyGroupName }
+            : { mode: "join", inviteCode }
+        ),
       });
-      if (result?.error) {
-        setError("Account created — please log in.");
-        setMode("login");
+      if (!setupRes.ok) {
+        router.push("/family-setup");
         return;
       }
+
       router.push("/");
     } finally {
       setIsSubmitting(false);
@@ -178,6 +181,16 @@ export default function LoginForm() {
         onSubmit={mode === "login" ? handleLogin : handleSignup}
         className="mt-6 flex flex-col gap-4"
       >
+        {mode === "signup" && (
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Your name"
+            autoComplete="name"
+            className="rounded-lg bg-gray-800 px-4 py-3 text-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500"
+          />
+        )}
         {mode === "signup" && signupMode === "create" && (
           <input
             type="text"

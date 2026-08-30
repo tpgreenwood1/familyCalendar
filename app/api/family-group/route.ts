@@ -1,22 +1,38 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requireSession, requireCan } from "@/lib/authz";
+import { familyGroupUpdateSchema } from "@/lib/schemas";
+import { errorResponse } from "@/lib/api-errors";
+import { publishDomainEvent } from "@/lib/realtime";
+
+export async function GET() {
+  try {
+    const ctx = await requireSession();
+
+    const familyGroup = await prisma.familyGroup.findUniqueOrThrow({ where: { id: ctx.familyGroupId } });
+
+    return NextResponse.json({ name: familyGroup.name, holidayMode: familyGroup.holidayMode });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
 
 export async function PATCH(request: Request) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    const ctx = await requireSession();
+    requireCan(ctx, "family.update");
 
-  const { name } = await request.json();
-  const normalized = typeof name === "string" ? name.trim().replace(/\s+/g, " ") : "";
+    const { name, holidayMode } = familyGroupUpdateSchema.parse(await request.json());
 
-  if (!normalized) {
-    return NextResponse.json({ error: "name is required" }, { status: 400 });
+    const familyGroup = await prisma.familyGroup.update({
+      where: { id: ctx.familyGroupId },
+      data: { name, holidayMode },
+    });
+
+    publishDomainEvent({ type: "FAMILY_GROUP_UPDATED", familyGroupId: ctx.familyGroupId });
+
+    return NextResponse.json({ name: familyGroup.name, holidayMode: familyGroup.holidayMode });
+  } catch (error) {
+    return errorResponse(error);
   }
-
-  const familyGroup = await prisma.familyGroup.update({
-    where: { id: session.user.familyGroupId },
-    data: { name: normalized },
-  });
-
-  return NextResponse.json({ name: familyGroup.name });
 }

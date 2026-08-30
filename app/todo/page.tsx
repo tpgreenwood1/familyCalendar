@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { FamilyUser, Todo } from "@prisma/client";
-import { auth } from "@/lib/auth";
+import type { FamilyMember, Todo } from "@prisma/client";
+import { getCurrentUser, getFamilyMembership } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
 import TodoBoard from "@/components/TodoBoard";
 
@@ -14,28 +14,31 @@ export const metadata: Metadata = {
 
 async function getBoardData(familyGroupId: number): Promise<{
   todos: Todo[];
-  familyUsers: FamilyUser[];
+  familyMembers: FamilyMember[];
   error?: string;
 }> {
   try {
-    const [familyUsers, todos] = await Promise.all([
-      prisma.familyUser.findMany({ where: { familyGroupId }, orderBy: { createdAt: "asc" } }),
+    const [familyMembers, todos] = await Promise.all([
+      prisma.familyMember.findMany({ where: { familyGroupId }, orderBy: { createdAt: "asc" } }),
       prisma.todo.findMany({
-        where: { familyUser: { familyGroupId } },
+        where: { familyMember: { familyGroupId } },
         orderBy: { createdAt: "asc" },
       }),
     ]);
-    return { familyUsers, todos };
+    return { familyMembers, todos };
   } catch {
-    return { familyUsers: [], todos: [], error: "Could not connect to database" };
+    return { familyMembers: [], todos: [], error: "Could not connect to database" };
   }
 }
 
 export default async function TodoPage() {
-  const session = await auth();
-  if (!session) redirect("/login");
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
 
-  const { todos, familyUsers, error } = await getBoardData(session.user.familyGroupId);
+  const membership = await getFamilyMembership(user.id);
+  if (!membership) redirect("/family-setup");
+
+  const { todos, familyMembers, error } = await getBoardData(membership.familyGroupId);
 
   return (
     <main className="flex min-h-screen flex-col items-center bg-gray-950 px-6 py-16">
@@ -49,13 +52,13 @@ export default async function TodoPage() {
         To Do
       </h1>
       {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
-      {familyUsers.length === 0 && !error && (
+      {familyMembers.length === 0 && !error && (
         <p className="mt-10 text-xl text-gray-400">
           No family members yet — add one from the Home page to get started.
         </p>
       )}
       <div className="mt-10 flex w-full max-w-full flex-col items-center px-4">
-        <TodoBoard initialTodos={todos} familyUsers={familyUsers} />
+        <TodoBoard initialTodos={todos} familyMembers={familyMembers} />
       </div>
     </main>
   );
