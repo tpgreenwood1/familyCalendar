@@ -63,6 +63,29 @@ by redirecting such sessions to `/family-setup` (`components/FamilySetupForm.tsx
 same create/join UI, reachable any time a signed-in user has no `FamilyMembership` — instead
 of forcing them to sign up again.
 
+## Sign-up gate (dev phase)
+
+Not a `DesignSpec.md` feature — a temporary safeguard while the app sits at a live but
+unlisted Vercel URL during testing. `lib/auth.ts` wires a Better Auth
+`databaseHooks.user.create.before` hook that fires only when a new `User` row is about to be
+created (i.e. only on sign-up — sign-in never touches `user.create`, so already-approved
+accounts keep working unaffected). The hook checks the submitted email against
+`lib/signupAllowlist.ts#isEmailAllowedToSignUp`, which reads the comma-separated
+`ALLOWED_SIGNUP_EMAILS` env var (case-insensitive, whitespace-trimmed). An email not on the
+list gets a `console.warn` (visible in Vercel function logs — this is the only "notification"
+that exists right now, there's no email/SMS to the admin) and the sign-up request is aborted
+with a Better Auth `APIError` whose message ("...in its development phase, a request for
+access has been sent to the administrator...") surfaces verbatim through
+`components/LoginForm.tsx`'s existing `signUpError.message` error handling, with no UI code
+changes needed.
+
+`ALLOWED_SIGNUP_EMAILS` unset or empty **denies everyone** — the safe default, so a fresh
+environment (or a forgotten Vercel env var) can't accidentally leave sign-up open. Set it
+locally in `.env` and in the Vercel project's env vars for whichever emails should be able to
+sign up.
+
+This is a blunt, temporary measure — reconsider or remove it before any real public launch.
+
 ## Session checks
 
 - `lib/authz.ts#getCurrentUser()` — server components/pages; returns `null` if signed out.

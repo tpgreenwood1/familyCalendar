@@ -307,3 +307,8 @@ prefer updating those over expanding this file's "Architecture notes" section fu
 Local `.env` needs `DATABASE_URL`, `DIRECT_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL` (see
 `.env.example`). The design spec lists many more vars for later-phase features (calendar
 integrations, etc.) — only add/require them when building the corresponding feature.
+
+`ALLOWED_SIGNUP_EMAILS` (comma-separated, case-insensitive) is a dev-phase safeguard, not a
+design-spec feature — see `docs/AUTH.md` "Sign-up gate (dev phase)". Unset/empty blocks all
+sign-ups, so set it locally and in Vercel's project env vars to whichever emails should be
+allowed to create an account.
