@@ -212,13 +212,45 @@ export const routineItemCompletionSchema = z.object({
   completed: z.boolean(),
 });
 
+export const shoppingItemCategory = z.enum(["GROCERIES", "OTHER"]);
+
 export const shoppingItemCreateSchema = z.object({
   name: trimmedString("name is required"),
+  category: shoppingItemCategory.optional(),
 });
 
 export const shoppingItemUpdateSchema = z.object({
   checked: z.boolean(),
 });
+
+export const specialOccasionType = z.enum(["BIRTHDAY", "ANNIVERSARY"], {
+  message: "invalid type",
+});
+
+// Plain YYYY-MM-DD, not a full timestamp -- same convention as dateOfBirth above. The year
+// carried by this date doubles as the "initiating year" used to compute age/years-since.
+const specialOccasionDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date")
+  .transform((s) => new Date(`${s}T00:00:00.000Z`));
+
+export const specialOccasionCreateSchema = z.object({
+  title: trimmedString("title is required"),
+  type: specialOccasionType,
+  originalDate: specialOccasionDate,
+  isSomber: z.boolean().optional(),
+});
+
+export const specialOccasionUpdateSchema = z
+  .object({
+    title: trimmedString("title is required").optional(),
+    type: specialOccasionType.optional(),
+    originalDate: specialOccasionDate.optional(),
+    isSomber: z.boolean().optional(),
+  })
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: "no changes provided",
+  });
 
 export const todoCreateSchema = z.object({
   text: trimmedString("text is required"),

@@ -40,9 +40,9 @@ export default function RoutineModal({
   routine?: RoutineDTO;
   familyMembers: FamilyMember[];
   onClose: () => void;
-  onCreate: (payload: RoutineFormPayload) => Promise<boolean>;
-  onUpdate: (routineId: number, payload: RoutineFormPayload & { active: boolean }) => Promise<boolean>;
-  onDelete: (routineId: number) => Promise<boolean>;
+  onCreate?: (payload: RoutineFormPayload) => Promise<boolean>;
+  onUpdate?: (routineId: number, payload: RoutineFormPayload & { active: boolean }) => Promise<boolean>;
+  onDelete?: (routineId: number) => Promise<boolean>;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -108,8 +108,8 @@ export default function RoutineModal({
 
     setSaving(true);
     const success = routine
-      ? await onUpdate(routine.id, { ...payload, active })
-      : await onCreate(payload);
+      ? ((await onUpdate?.(routine.id, { ...payload, active })) ?? false)
+      : ((await onCreate?.(payload)) ?? false);
     setSaving(false);
 
     if (success) onClose();
@@ -121,7 +121,7 @@ export default function RoutineModal({
     if (!window.confirm(`Delete "${routine.name}"? This removes its whole history.`)) return;
 
     setSaving(true);
-    const success = await onDelete(routine.id);
+    const success = (await onDelete?.(routine.id)) ?? false;
     setSaving(false);
 
     if (success) onClose();

@@ -264,6 +264,38 @@ export async function listRoutineOccurrences(
   return occurrences.map(toOccurrenceDTO);
 }
 
+/**
+ * The current week's (Monday-Sunday, ISO convention regardless of locale, matching
+ * lib/calendarViewRange.ts's week boundary) occurrences for the whole family, generating
+ * each of the 7 days first via the same idempotent generateRoutineOccurrences used for a
+ * single day. Used by the read-only per-member weekly overview, mirroring
+ * lib/chores.ts#listChoreOccurrencesForWeek.
+ */
+export async function listRoutineOccurrencesForWeek(
+  ctx: FamilyContext,
+  anchorDateStr?: string
+): Promise<{ weekStart: Date; occurrences: RoutineOccurrenceDTO[] }> {
+  const timezone = await getFamilyTimezone(ctx.familyGroupId);
+  const anchor = anchorDateStr
+    ? DateTime.fromISO(anchorDateStr, { zone: timezone })
+    : DateTime.now().setZone(timezone);
+  const weekStartDt = anchor.startOf("week");
+  const dayStrs = Array.from({ length: 7 }, (_, i) => weekStartDt.plus({ days: i }).toISODate()!);
+
+  await Promise.all(dayStrs.map((dayStr) => generateRoutineOccurrences(ctx.familyGroupId, dayStr)));
+
+  const occurrences = await prisma.routineOccurrence.findMany({
+    where: {
+      familyGroupId: ctx.familyGroupId,
+      date: { gte: weekStartDt.toJSDate(), lt: weekStartDt.plus({ days: 7 }).toJSDate() },
+    },
+    include: occurrenceInclude,
+    orderBy: [{ date: "asc" }, { id: "asc" }],
+  });
+
+  return { weekStart: weekStartDt.toJSDate(), occurrences: occurrences.map(toOccurrenceDTO) };
+}
+
 export async function setRoutineItemCompletion(
   ctx: FamilyContext,
   occurrenceId: number,

@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser, getFamilyMembership } from "@/lib/authz";
 import { getDashboardData } from "@/lib/dashboardData";
 import FamilyDashboard from "@/components/FamilyDashboard";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 export const dynamic = "force-dynamic";
 
@@ -25,42 +27,42 @@ export default async function DashboardPage() {
     routineOccurrences,
     events,
     shoppingItems,
+    specialOccasions,
     error,
   } = await getDashboardData({ user, familyGroupId: membership.familyGroupId });
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-gray-950 px-6 py-16">
-      <Link
-        href="/"
-        className="mb-6 rounded-lg px-6 py-3 text-xl text-gray-400 hover:text-white"
-      >
-        ← Home
-      </Link>
-      <div className="flex items-center gap-4">
-        <h1 className="text-3xl font-light tracking-widest text-white">Dashboard</h1>
-        <Link
-          href="/wall"
-          className="rounded-full border border-gray-700 px-4 py-1.5 text-sm text-gray-400 hover:border-gray-500 hover:text-white"
-        >
-          Wall Display →
-        </Link>
-      </div>
-      {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
-      {familyMembers.length === 0 && !error && (
-        <p className="mt-10 text-xl text-gray-400">
-          No family members yet — add one from the Home page to get started.
-        </p>
-      )}
-      <div className="mt-10 w-full max-w-6xl px-4">
-        <FamilyDashboard
-          familyMembers={familyMembers}
-          initialTodos={todos}
-          initialChoreOccurrences={choreOccurrences}
-          initialRoutineOccurrences={routineOccurrences}
-          initialEvents={events}
-          initialShoppingItems={shoppingItems}
-        />
-      </div>
-    </main>
+    <div className="flex min-h-screen flex-col bg-gray-950">
+      <Header />
+      <main className="flex flex-1 flex-col items-center px-6 py-16">
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-light tracking-widest text-white">Dashboard</h1>
+          <Link
+            href="/wall"
+            className="rounded-full border border-gray-700 px-4 py-1.5 text-sm text-gray-400 hover:border-gray-500 hover:text-white"
+          >
+            Wall Display →
+          </Link>
+        </div>
+        {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
+        {familyMembers.length === 0 && !error && (
+          <p className="mt-10 text-xl text-gray-400">
+            No family members yet — add one from the Family page to get started.
+          </p>
+        )}
+        <div className="mt-10 w-full max-w-6xl px-4">
+          <FamilyDashboard
+            familyMembers={familyMembers}
+            initialTodos={todos}
+            initialChoreOccurrences={choreOccurrences}
+            initialRoutineOccurrences={routineOccurrences}
+            initialEvents={events}
+            initialShoppingItems={shoppingItems}
+            initialSpecialOccasions={specialOccasions}
+          />
+        </div>
+      </main>
+      <Footer />
+    </div>
   );
 }

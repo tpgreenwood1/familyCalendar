@@ -1,12 +1,14 @@
-import type { ShoppingItem } from "@prisma/client";
+import type { ShoppingItem, ShoppingItemCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { FamilyContext } from "@/lib/authz";
 import { ApiError } from "@/lib/api-errors";
 import { publishDomainEvent } from "@/lib/realtime";
+import { capitalize } from "@/lib/textFormat";
 
 export type ShoppingItemDTO = {
   id: number;
   name: string;
+  category: ShoppingItemCategory;
   checked: boolean;
   checkedAt: Date | null;
   createdAt: Date;
@@ -16,6 +18,7 @@ function toDTO(item: ShoppingItem): ShoppingItemDTO {
   return {
     id: item.id,
     name: item.name,
+    category: item.category,
     checked: item.checked,
     checkedAt: item.checkedAt,
     createdAt: item.createdAt,
@@ -54,10 +57,14 @@ export async function listShoppingItems(ctx: FamilyContext): Promise<ShoppingIte
   return items.map(toDTO);
 }
 
-export async function addShoppingItem(ctx: FamilyContext, name: string): Promise<ShoppingItemDTO> {
+export async function addShoppingItem(
+  ctx: FamilyContext,
+  name: string,
+  category: ShoppingItemCategory
+): Promise<ShoppingItemDTO> {
   const list = await getOrCreateShoppingList(ctx.familyGroupId);
   const item = await prisma.shoppingItem.create({
-    data: { shoppingListId: list.id, name },
+    data: { shoppingListId: list.id, name: capitalize(name), category },
   });
 
   publishDomainEvent({ type: "SHOPPING_ITEM_CREATED", familyGroupId: ctx.familyGroupId });

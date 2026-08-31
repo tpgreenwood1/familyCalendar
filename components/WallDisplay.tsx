@@ -8,12 +8,17 @@ import type { ChoreOccurrenceDTO } from "@/lib/chores";
 import type { RoutineOccurrenceDTO } from "@/lib/routines";
 import type { CalendarOccurrenceDTO } from "@/lib/calendar";
 import type { ShoppingItemDTO } from "@/lib/shopping";
+import type { SpecialOccasionDTO } from "@/lib/specialOccasions";
 import { useDashboardQueries } from "@/lib/useDashboardQueries";
 import { useIdleReturn } from "@/lib/useIdleReturn";
 import { subscribeToFamilyEvents } from "@/lib/realtime";
 import { getFamilyMemberColor } from "@/lib/familyMemberColors";
 import MemberDashboardCard from "@/components/MemberDashboardCard";
 import ShoppingList, { SHOPPING_ITEMS_QUERY_KEY, fetchShoppingItems } from "@/components/ShoppingList";
+import SpecialOccasionList, {
+  SPECIAL_OCCASIONS_QUERY_KEY,
+  fetchSpecialOccasions,
+} from "@/components/SpecialOccasionList";
 import FuturePlaceholderTiles from "@/components/FuturePlaceholderTiles";
 
 /** How long the wall can sit on a member/shopping focus view with no touch before it
@@ -44,6 +49,7 @@ export default function WallDisplay({
   initialRoutineOccurrences,
   initialEvents,
   initialShoppingItems,
+  initialSpecialOccasions,
   loadError,
 }: {
   familyMembers: FamilyMember[];
@@ -52,6 +58,7 @@ export default function WallDisplay({
   initialRoutineOccurrences: RoutineOccurrenceDTO[];
   initialEvents: CalendarOccurrenceDTO[];
   initialShoppingItems: ShoppingItemDTO[];
+  initialSpecialOccasions: SpecialOccasionDTO[];
   loadError?: string;
 }) {
   const {
@@ -74,14 +81,20 @@ export default function WallDisplay({
 
   const [focusedMemberId, setFocusedMemberId] = useState<number | null>(null);
   const [shoppingOpen, setShoppingOpen] = useState(false);
+  const [occasionsOpen, setOccasionsOpen] = useState(false);
   const now = useClock();
 
   const returnToOverview = () => {
     setFocusedMemberId(null);
     setShoppingOpen(false);
+    setOccasionsOpen(false);
   };
 
-  useIdleReturn(focusedMemberId !== null || shoppingOpen, IDLE_RETURN_MS, returnToOverview);
+  useIdleReturn(
+    focusedMemberId !== null || shoppingOpen || occasionsOpen,
+    IDLE_RETURN_MS,
+    returnToOverview
+  );
 
   const focusedMember = familyMembers.find((m) => m.id === focusedMemberId) ?? null;
 
@@ -92,6 +105,14 @@ export default function WallDisplay({
     refetchInterval: subscribeToFamilyEvents(),
   });
   const uncheckedShoppingCount = shoppingItems.filter((i) => !i.checked).length;
+
+  const { data: specialOccasions = initialSpecialOccasions } = useQuery({
+    queryKey: SPECIAL_OCCASIONS_QUERY_KEY,
+    queryFn: fetchSpecialOccasions,
+    initialData: initialSpecialOccasions,
+    refetchInterval: subscribeToFamilyEvents(),
+  });
+  const upcomingOccasions = specialOccasions.filter((o) => o.daysUntil <= 7);
 
   const dateLabel = now.toLocaleDateString(undefined, {
     weekday: "long",
@@ -162,6 +183,17 @@ export default function WallDisplay({
             </button>
             <ShoppingList initialItems={initialShoppingItems} />
           </div>
+        ) : occasionsOpen ? (
+          <div>
+            <button
+              type="button"
+              onClick={returnToOverview}
+              className="mb-6 rounded-xl bg-gray-900 px-6 py-4 text-xl text-gray-300 hover:bg-gray-800"
+            >
+              ◀ Back to everyone
+            </button>
+            <SpecialOccasionList initialOccasions={initialSpecialOccasions} />
+          </div>
         ) : (
           <>
             <section className="mb-8 rounded-2xl border-t-4 border-gray-500 bg-gray-900 p-8">
@@ -227,6 +259,21 @@ export default function WallDisplay({
               <span className="text-3xl font-medium">Shopping List</span>
               <span className="ml-4 text-lg text-gray-400">
                 {uncheckedShoppingCount === 0 ? "Nothing needed" : `${uncheckedShoppingCount} items needed`}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOccasionsOpen(true)}
+              className="mt-6 w-full rounded-2xl border-t-4 border-amber-500 bg-gray-900 p-6 text-left hover:bg-gray-800"
+            >
+              <span className="text-3xl font-medium">Special Occasions</span>
+              <span className="ml-4 text-lg text-gray-400">
+                {upcomingOccasions.length === 0
+                  ? "Nothing coming up"
+                  : upcomingOccasions[0].isToday
+                    ? `It's ${upcomingOccasions[0].title} today!`
+                    : `${upcomingOccasions[0].title} in ${upcomingOccasions[0].daysUntil} days`}
               </span>
             </button>
 

@@ -41,15 +41,25 @@ See `docs/DATABASE.md`'s "Family isolation" section for why this matters.
 ```
 app/
   layout.tsx, providers.tsx     root layout; TanStack Query's QueryClientProvider
-  page.tsx                      home: family settings, feature tiles, member manager
+  page.tsx                      home: clock/weather widgets + feature tiles only
+  family/                       family profile, invite code, member management (moved off home)
+  settings/                     general app settings -- "Coming soon" placeholder
   login/, family-setup/         Better Auth sign-in/up, create-or-join-family flow
   todo/, calendar/, chores/,
+  chores/edit/                  chores/ is today's board (add + complete/skip only);
+                                 chores/edit/ is a separate, member-filterable editing page
+  chores/[memberId]/            read-only current-week overview for one member (§13.8)
   routines/, shopping/          one page per domain, each backed by a *Board component
   dashboard/                    Phase 9 combined view (lib/dashboardData.ts)
-  wall/                         Phase 10 wall-mounted display (shares dashboard data/hooks)
+  wall/                         Phase 10 wall-mounted display (shares dashboard data/hooks);
+                                 deliberately excluded from the shared Header/Footer -- kiosk
+                                 full-screen layout
   api/                          route handlers -- see docs/API.md
-components/                     one *Board/*Modal/*Card per domain, plus shared chrome
-                                 (FamilyCalendarTitle, LogoutButton, InviteCodeCard)
+components/                     one *Board/*Modal/*Card per domain, plus shared chrome:
+                                 Header.tsx (async Server Component), HeaderNav.tsx (client
+                                 active-link nav), Footer.tsx, ClockWidget.tsx, WeatherWidget.tsx.
+                                 FamilyCalendarTitle/InviteCodeCard/FamilyMemberManager render on
+                                 app/family/page.tsx rather than the home page.
 lib/
   prisma.ts                     PrismaClient singleton
   auth.ts, auth-client.ts,
@@ -68,9 +78,25 @@ lib/
   familyMemberColors.ts,
   familyMemberAvatars.ts,
   calendarEventColor.ts         fixed palettes/derivations, no user-defined colours
+  predefinedChores.ts           fixed starter list offered when adding a chore (+ custom entry)
+  textFormat.ts                 shared capitalize() -- used by lib/chores.ts and lib/shopping.ts
+  weather.ts                    Open-Meteo client (no API key) for the home page's WeatherWidget
 middleware.ts                   Edge cookie-presence gate (real check happens per-page/route)
 prisma/schema.prisma            see docs/DATABASE.md
 ```
+
+## Shared chrome: Header/Footer
+
+Every authenticated page composes `<Header /><main>...</main><Footer />` rather than nesting
+`Header`/`Footer` in `app/layout.tsx` -- there's no App Router nested layout for this yet, so each
+page opts in explicitly, matching the existing convention of every page independently resolving
+its own session/family data. `Header` is an async Server Component that resolves the signed-in
+user's family name itself (via `getCurrentUser`/`getFamilyMembership`/Prisma, falling back to
+`"Family"` on any failure) rather than receiving it as a prop, so it can be dropped into any page
+without threading data through. `HeaderNav` is a client component (`usePathname`) nested inside it
+for active-link highlighting. Three routes deliberately opt out: `/wall` (full-screen kiosk
+display, per Phase 10), and `/login`/`/family-setup` (pre-authentication/pre-family flows with no
+session or family to show chrome for).
 
 ## Server-rendered pages, then TanStack Query takes over
 

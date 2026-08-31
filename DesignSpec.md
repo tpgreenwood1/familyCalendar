@@ -765,8 +765,32 @@ Do not implement initially:
 - missed-chore tracking
 - rotation
 - temporary reassignment
-- completion history UI
+- completion history UI (multi-week history/reporting — see §13.8 for the one exception:
+  a read-only view of the *current* week only)
 - age-based filtering
+
+## 13.7 Adding & editing chores (UI)
+
+- Chore titles always display capitalized (first letter uppercase, rest lowercase)
+  regardless of the casing they were entered in.
+- When adding a chore, offer a fixed list of common household chores to pick from
+  (e.g. "Empty dishwasher", "Make bed", "Walk the dog"), plus a "Custom…" option that
+  reveals a free-text field for anything not on the list.
+- Editing an existing chore (title, assignee, schedule, active/inactive, delete) happens
+  on a separate "Edit chores" page, reached from the main Chores page, so the main page
+  stays focused on today's view. The edit page is filterable by family member.
+
+## 13.8 Weekly overview (per member)
+
+- Clicking a family member's name on the main Chores page opens a read-only weekly
+  overview for that member: the current week only (Monday-Sunday), with no navigation to
+  past/future weeks.
+- Shows each day of the week and that member's chores set for that day, with status
+  (pending/completed/skipped) — a glance view, not an editable one. Completing or
+  skipping a chore still only happens from the main Chores page.
+- This is deliberately narrow in scope (current week only) and does not conflict with
+  §13.6's exclusion of completion history UI, which is about multi-week
+  history/reporting.
 
 ---
 
@@ -914,25 +938,70 @@ V1:
 - delete item
 - display unchecked items prominently
 - completed items can be visually separated
+- every item sorts into exactly one of two fixed columns, "Groceries" or "Other Items",
+  chosen when the item is added (default "Groceries")
+- item names display capitalized (first letter uppercase, rest lowercase) regardless of
+  the casing they were typed in — e.g. "MILK" and "milk" both display as "Milk"
 
 Example:
 
-    GROCERIES
+    GROCERIES              OTHER ITEMS
 
-    ☐ Milk
-    ☐ Bread
+    ☐ Milk                 ☐ Batteries
+    ☐ Bread                ☐ Washing powder
     ☐ Apples
-    ☐ Washing powder
     ☑ Chicken
 
 Future:
 
 - multiple lists
-- categories
+- user-defined/custom categories (beyond the fixed Groceries / Other Items split)
 - quantities
 - recurring shopping
 - stores
 - meal planning integration
+
+---
+
+# 16A. Special Occasions
+
+A year-round overview of birthdays and anniversaries — recurring yearly events, but not tied
+to a weekday schedule the way Chores/Routines are.
+
+Do not model it as a Chore/Routine-style definition+schedule+occurrence trio. Nothing here is
+ever completed or skipped, so there is no per-day state to generate or persist — "next
+occurrence", "days until", and "years since"/"turning N" are computed on every read instead
+(`lib/specialOccasions.ts`).
+
+Model:
+
+    FamilyGroup
+        |
+        +-- SpecialOccasion   (no FamilyMember relation)
+
+V1:
+
+- standalone entries only — a `SpecialOccasion` is not linked to any `FamilyMember` or to
+  `FamilyMember.dateOfBirth`. A free-text `title` covers anyone: a family member, a
+  grandparent, a pet, or a deceased relative
+- each occasion has a `title`, a `type` (`BIRTHDAY` or `ANNIVERSARY`), and one full date (the
+  actual birth/wedding/death date, year included) — the year of that date doubles as the
+  "initiating year" used to compute the age/years-since number, so there is no separate year
+  field
+- a `isSomber` flag distinguishes a happy occasion (a birthday, a wedding anniversary) from a
+  somber one (e.g. a death anniversary/"In Memory of…"). This is **display-only** — it changes
+  icon/wording, never suppresses the entry or gives it lower prominence than a happy one
+- a dedicated page lists every occasion for the family, sorted by soonest-upcoming (wrapping
+  across the year boundary), with add/edit/delete
+- the Family Dashboard and Wall Display each surface a 7-day-window digest: occasions due
+  within the next 7 days ("Mum's Birthday in 6 days"), and today's occasions get their own
+  phrasing ("It's Mum's Birthday Today!" / "Today marks 3 years since Grandpa passed")
+
+Future (explicitly out of scope for V1):
+
+- reminders/notifications (push/email) ahead of an occasion
+- linking an occasion to a `FamilyMember` (e.g. to reuse their avatar/color)
+- gift ideas/tracking
 
 ---
 
@@ -1723,6 +1792,22 @@ Optionally add disabled dashboard tiles:
 These are visual placeholders only.
 
 Do not build their backend functionality.
+
+---
+
+# 42A. Phase 12 — Special Occasions
+
+Implement:
+
+1. `SpecialOccasion` model (title, type, one full date, `isSomber` flag) — no
+   `FamilyMember` relation, no schedule/occurrence tables
+2. Computed-on-read next-occurrence/days-until/years-since (`lib/specialOccasions.ts`),
+   not generated or persisted rows
+3. A dedicated `/occasions` page — year overview, sorted soonest-first, add/edit/delete
+4. Family Dashboard digest card — occasions within the next 7 days
+5. Wall Display tile — same digest, tap to open the full list, joins the existing
+   focus-view/idle-return pattern
+6. Realtime (poll) — same seam as every other domain
 
 ---
 

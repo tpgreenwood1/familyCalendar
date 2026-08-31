@@ -6,6 +6,7 @@ import type { FamilyContext } from "@/lib/authz";
 import { ApiError } from "@/lib/api-errors";
 import { publishDomainEvent } from "@/lib/realtime";
 import { getFamilyTimezone } from "@/lib/calendar";
+import { capitalize } from "@/lib/textFormat";
 import type { choreCreateSchema, choreUpdateSchema } from "@/lib/schemas";
 
 type CreateChoreInput = z.infer<typeof choreCreateSchema>;
@@ -104,7 +105,7 @@ export async function createChore(ctx: FamilyContext, input: CreateChoreInput): 
   const chore = await prisma.$transaction(async (tx) => {
     const created = await tx.chore.create({
       data: {
-        title: input.title,
+        title: capitalize(input.title),
         description: input.description,
         familyGroupId: ctx.familyGroupId,
       },
@@ -143,7 +144,7 @@ export async function updateChore(
     await tx.chore.update({
       where: { id },
       data: {
-        title: input.title,
+        title: input.title !== undefined ? capitalize(input.title) : undefined,
         description: input.description,
         active: input.active,
       },
@@ -215,6 +216,39 @@ export async function listChoreOccurrences(
     orderBy: { id: "asc" },
   });
   return occurrences.map(toOccurrenceDTO);
+}
+
+/**
+ * The current week's (Monday-Sunday, ISO convention regardless of locale, matching
+ * lib/calendarViewRange.ts's week boundary) occurrences for the whole family, generating
+ * each of the 7 days first via the same idempotent generateChoreOccurrences used for a
+ * single day. Used by the read-only per-member weekly overview (§13.8) -- callers filter
+ * to one member client-side, the same way listChoreOccurrences's whole-family result is
+ * filtered per-column on the main board.
+ */
+export async function listChoreOccurrencesForWeek(
+  ctx: FamilyContext,
+  anchorDateStr?: string
+): Promise<{ weekStart: Date; occurrences: ChoreOccurrenceDTO[] }> {
+  const timezone = await getFamilyTimezone(ctx.familyGroupId);
+  const anchor = anchorDateStr
+    ? DateTime.fromISO(anchorDateStr, { zone: timezone })
+    : DateTime.now().setZone(timezone);
+  const weekStartDt = anchor.startOf("week");
+  const dayStrs = Array.from({ length: 7 }, (_, i) => weekStartDt.plus({ days: i }).toISODate()!);
+
+  await Promise.all(dayStrs.map((dayStr) => generateChoreOccurrences(ctx.familyGroupId, dayStr)));
+
+  const occurrences = await prisma.choreOccurrence.findMany({
+    where: {
+      familyGroupId: ctx.familyGroupId,
+      date: { gte: weekStartDt.toJSDate(), lt: weekStartDt.plus({ days: 7 }).toJSDate() },
+    },
+    include: { chore: true },
+    orderBy: [{ date: "asc" }, { id: "asc" }],
+  });
+
+  return { weekStart: weekStartDt.toJSDate(), occurrences: occurrences.map(toOccurrenceDTO) };
 }
 
 export async function setChoreOccurrenceStatus(

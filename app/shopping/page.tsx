@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getFamilyMembership, type FamilyContext } from "@/lib/authz";
 import { listShoppingItems, type ShoppingItemDTO } from "@/lib/shopping";
 import ShoppingList from "@/components/ShoppingList";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 export const dynamic = "force-dynamic";
 
@@ -38,18 +39,16 @@ export default async function ShoppingPage() {
   });
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-gray-950 px-6 py-16">
-      <Link
-        href="/"
-        className="mb-6 rounded-lg px-6 py-3 text-xl text-gray-400 hover:text-white"
-      >
-        ← Home
-      </Link>
-      <h1 className="text-3xl font-light tracking-widest text-white">Shopping List</h1>
-      {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
-      <div className="mt-10 w-full px-4">
-        <ShoppingList initialItems={items} />
-      </div>
-    </main>
+    <div className="flex min-h-screen flex-col bg-gray-950">
+      <Header />
+      <main className="flex flex-1 flex-col items-center px-6 py-16">
+        <h1 className="text-3xl font-light tracking-widest text-white">Shopping List</h1>
+        {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
+        <div className="mt-10 w-full px-4">
+          <ShoppingList initialItems={items} />
+        </div>
+      </main>
+      <Footer />
+    </div>
   );
 }

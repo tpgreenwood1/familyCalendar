@@ -61,6 +61,7 @@ User (Better Auth account)
                             +-- Chore (-> ChoreSchedule -> one FamilyMember; -> ChoreOccurrence per day)
                             +-- Routine (-> one FamilyMember; -> RoutineSchedule; -> RoutineOccurrence per day)
                             +-- ShoppingList (-> ShoppingItem)
+                            +-- SpecialOccasion
 ```
 
 Full field-level detail, including why each table is shaped the way it is, lives in
@@ -95,8 +96,15 @@ against it.
   schedule, resetting daily via occurrences whose items are ticked/unticked independently.
   Household-wide holiday mode can disable a routine's occurrences; a per-routine opt-out
   exists, but an *alternative* holiday schedule is not yet built.
-- **Shopping list.** One shared list per family, add/check/uncheck/delete. No quantity,
-  category, or store.
+- **Shopping list.** One shared list per family, add/check/uncheck/delete. Items sort into
+  one of two fixed columns ("Groceries" / "Other Items") and display with normalized
+  (capitalized) casing regardless of how they were typed. No quantity, user-defined
+  categories, or store.
+- **Special occasions.** Standalone birthday/anniversary entries (free-text title, type, one
+  full date carrying both the date and the initiating year, a display-only happy/somber tone
+  flag) — not linked to any `FamilyMember`. A dedicated `/occasions` page lists all occasions
+  sorted by next upcoming occurrence; the dashboard and wall display surface a 7-day-window
+  digest computed the same way. No reminders/notifications.
 - **Family dashboard.** A combined, per-member view of today's chores, routines, and
   incomplete todos, plus today's calendar events and the shopping list — a read/combine layer
   over the other domains' existing data, not new domain logic.
@@ -107,6 +115,11 @@ against it.
 - **Realtime.** Family-scoped data refreshes automatically across devices. Implemented as
   short-interval polling today, behind an abstraction (`lib/realtime.ts`) designed so a future
   SSE/WebSocket upgrade doesn't require changing call sites.
+- **App shell.** A shared header (family name/link home, cross-page navigation, log out) and
+  footer on every authenticated page except the wall display and pre-login/pre-family flows.
+  The home page itself is tile-first — feature navigation, a live clock/date, and a weather
+  widget — with family-profile/member management and general app settings each moved to their
+  own page (`/family`, `/settings`).
 
 ## 6. Definition of done (per feature)
 

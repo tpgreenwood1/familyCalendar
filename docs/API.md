@@ -7,8 +7,9 @@ on top of.
 
 ## Conventions
 
-- **Auth.** Every route except `GET /api/config` and the Better Auth handler itself calls
-  `requireSession()` (`lib/authz.ts`) first, which resolves the caller's Better Auth session
+- **Auth.** Every route except `GET /api/config`, `GET /api/weather`, and the Better Auth
+  handler itself calls `requireSession()` (`lib/authz.ts`) first, which resolves the caller's
+  Better Auth session
   into `{ user, familyGroupId }` — 401 if there's no session, 409 if the session exists but
   hasn't joined/created a family yet. `familyGroupId` always comes from this, never from the
   request. A mutating route additionally calls `requireCan(ctx, action)` (see "Authorization"
@@ -39,7 +40,8 @@ on top of.
 `lib/authz.ts` defines every mutating action as a member of the `Action` union
 (`family.update`, `familyMember.manage`, `todo.manage`, `invitation.create`,
 `calendarEvent.manage`, `chore.manage`, `choreOccurrence.manage`, `routine.manage`,
-`routineOccurrence.manage`, `shoppingItem.manage`) and a single `can(ctx, action)` predicate.
+`routineOccurrence.manage`, `shoppingItem.manage`, `specialOccasion.manage`) and a single
+`can(ctx, action)` predicate.
 There is no ADULT/CHILD role split yet — `can()` currently returns `true` for every action for
 any authenticated family member — but routes call `requireCan()` rather than assuming access,
 so a role split can be added inside `lib/authz.ts` later without touching any route. The one
@@ -53,6 +55,13 @@ is why it isn't in `can()`.
 ### `GET /api/config`
 No auth. Legacy: returns `{ label }` from the `AppConfig.app_label` row (kiosk-scaffold
 leftover, unrelated to the rest of the app).
+
+### `GET /api/weather`
+No auth (weather isn't family-scoped data). Thin wrapper over `lib/weather.ts#fetchWeather`,
+which calls Open-Meteo's `current_weather` endpoint (no API key) using `WEATHER_LAT`/
+`WEATHER_LON` env vars (defaults to London). Returns `{ tempC, description, icon }`, or 502
+with `{ error }` if the upstream call fails. Powers `components/WeatherWidget.tsx` on the home
+page; response is cached 10 minutes (`fetch`'s `next.revalidate`).
 
 ### `POST /api/family/setup`
 Auth required, **no** existing `FamilyMembership`. Body: `{ mode: "create", familyGroupName }`
@@ -108,15 +117,28 @@ edit/exclusion yet — see `docs/DATABASE.md`).
 
 ### `GET/POST /api/chores`
 Thin wrappers over `lib/chores.ts#listChores`/`#createChore`. `POST`:
-`requireCan("chore.manage")`; body `choreCreateSchema`.
+`requireCan("chore.manage")`; body `choreCreateSchema`. `createChore` stores `title`
+capitalized regardless of input casing (`lib/textFormat.ts#capitalize`).
 
 ### `PATCH/DELETE /api/chores/[id]`
-`requireCan("chore.manage")`; delegate to `lib/chores.ts#updateChore`/`#deleteChore`.
+`requireCan("chore.manage")`; delegate to `lib/chores.ts#updateChore`/`#deleteChore`. The
+`/chores/edit` page (filterable-by-member chore editing, kept separate from the main
+`/chores` board) calls these same two routes — no dedicated edit-page API exists.
 
 ### `GET /api/chores/occurrences`
-Session required. Optional `?date=YYYY-MM-DD` (`dateOnlySchema`); no date returns all
-occurrences for the family. Does **not** itself generate today's occurrences — see
-`generateChoreOccurrences` below.
+Session required. Optional `?date=YYYY-MM-DD` (`dateOnlySchema`); no date defaults to
+today (in the family's timezone), **not** all occurrences for the family — always a single
+day. Calls `generateChoreOccurrences` for that day itself before reading, so callers never
+need to generate separately.
+
+### `GET /api/chores/occurrences/week`
+Session required, no params — always the current week (Monday-Sunday, family timezone).
+Thin wrapper over `lib/chores.ts#listChoreOccurrencesForWeek`, which generates each of the
+7 days' occurrences (same idempotent `generateChoreOccurrences` as the single-day route)
+and returns `{ weekStart, occurrences }` for the whole family — callers filter to one
+member client-side, same as the single-day route's whole-family result. Powers the
+read-only per-member weekly overview (`/chores/[memberId]`, `ChoreWeekOverview.tsx`) —
+see `DesignSpec.md` §13.8.
 
 ### `PATCH /api/chores/occurrences/[id]`
 `requireCan("choreOccurrence.manage")`. Body `choreOccurrenceStatusSchema` (`status`:
@@ -142,11 +164,28 @@ boolean`); delegates to `lib/routines.ts#setRoutineItemCompletion`, which upsert
 ### `GET/POST /api/shopping/items`
 Thin wrappers over `lib/shopping.ts#listShoppingItems`/`#addShoppingItem`, which lazily
 create the family's one `ShoppingList` on first use. `POST`: `requireCan("shoppingItem.manage")`;
-body `shoppingItemCreateSchema` (`name`).
+body `shoppingItemCreateSchema` (`name`, `category` — `"GROCERIES" | "OTHER"`, optional,
+defaults to `"GROCERIES"`). `addShoppingItem` stores `name` capitalized (first letter
+uppercase, rest lowercase) regardless of the casing it was submitted in.
 
 ### `PATCH/DELETE /api/shopping/items/[id]`
 `requireCan("shoppingItem.manage")`; delegate to `lib/shopping.ts#setShoppingItemChecked`/
 `#deleteShoppingItem`.
+
+### `GET/POST /api/special-occasions`
+Thin wrappers over `lib/specialOccasions.ts#listSpecialOccasions`/`#createSpecialOccasion`.
+`GET`: session required; returns every occasion for the family, sorted soonest-upcoming
+first, each pre-annotated with `nextOccurrenceDate`/`daysUntil`/`isToday`/`computedYears` —
+there is no separate "upcoming" endpoint; callers (the Dashboard card, the Wall tile) just
+filter this same list to `daysUntil <= 7` client-side. `POST`:
+`requireCan("specialOccasion.manage")`; body `specialOccasionCreateSchema`. Unlike
+`createChore`/`addShoppingItem`, `title` is stored as submitted, with no capitalization
+normalization — occasion titles are free-text phrases ("Mum's Birthday") that would be
+mangled by "first letter upper, rest lower".
+
+### `PATCH/DELETE /api/special-occasions/[id]`
+`requireCan("specialOccasion.manage")`; delegate to
+`lib/specialOccasions.ts#updateSpecialOccasion`/`#deleteSpecialOccasion`.
 
 ### `/api/auth/[...all]`
 Better Auth's own handler (`toNextJsHandler(auth)`) — sign-up, sign-in, sign-out, session

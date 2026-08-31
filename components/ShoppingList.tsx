@@ -14,9 +14,15 @@ export async function fetchShoppingItems(): Promise<ShoppingItemDTO[]> {
   return res.json();
 }
 
+const CATEGORIES = [
+  { value: "GROCERIES", label: "Groceries" },
+  { value: "OTHER", label: "Other Items" },
+] as const;
+
 export default function ShoppingList({ initialItems }: { initialItems: ShoppingItemDTO[] }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
+  const [category, setCategory] = useState<ShoppingItemDTO["category"]>("GROCERIES");
   const [error, setError] = useState<string | null>(null);
   const [showChecked, setShowChecked] = useState(false);
 
@@ -28,11 +34,17 @@ export default function ShoppingList({ initialItems }: { initialItems: ShoppingI
   });
 
   const addItem = useMutation({
-    mutationFn: async (itemName: string) => {
+    mutationFn: async ({
+      name: itemName,
+      category: itemCategory,
+    }: {
+      name: string;
+      category: ShoppingItemDTO["category"];
+    }) => {
       const res = await fetch("/api/shopping/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: itemName }),
+        body: JSON.stringify({ name: itemName, category: itemCategory }),
       });
       if (!res.ok) throw new Error();
       return (await res.json()) as ShoppingItemDTO;
@@ -90,12 +102,9 @@ export default function ShoppingList({ initialItems }: { initialItems: ShoppingI
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    addItem.mutate(trimmed);
+    addItem.mutate({ name: trimmed, category });
     setName("");
   }
-
-  const unchecked = items.filter((i) => !i.checked);
-  const checked = items.filter((i) => i.checked);
 
   function renderItem(item: ShoppingItemDTO) {
     return (
@@ -125,11 +134,41 @@ export default function ShoppingList({ initialItems }: { initialItems: ShoppingI
     );
   }
 
-  return (
-    <div className="mx-auto w-full max-w-xl rounded-xl border-t-4 border-emerald-500 bg-gray-900 p-6">
-      <h2 className="mb-6 text-2xl font-medium text-white">Groceries</h2>
+  function renderColumn(value: ShoppingItemDTO["category"], label: string) {
+    const unchecked = items.filter((i) => i.category === value && !i.checked);
+    const checked = items.filter((i) => i.category === value && i.checked);
 
-      <form onSubmit={handleAdd} className="flex gap-2">
+    return (
+      <div key={value}>
+        <h3 className="mb-3 text-lg font-medium text-white">{label}</h3>
+
+        <ul>{unchecked.map(renderItem)}</ul>
+
+        {unchecked.length === 0 && (
+          <p className="text-sm text-gray-500">Nothing on the list.</p>
+        )}
+
+        {checked.length > 0 && (
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={() => setShowChecked((v) => !v)}
+              className="text-sm text-gray-500 hover:text-gray-300"
+            >
+              {showChecked ? "Hide" : "Show"} checked off ({checked.length})
+            </button>
+            {showChecked && <ul className="mt-2">{checked.map(renderItem)}</ul>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-3xl rounded-xl border-t-4 border-emerald-500 bg-gray-900 p-6">
+      <h2 className="mb-6 text-2xl font-medium text-white">Shopping List</h2>
+
+      <form onSubmit={handleAdd} className="flex flex-wrap gap-2">
         <input
           type="text"
           value={name}
@@ -137,6 +176,18 @@ export default function ShoppingList({ initialItems }: { initialItems: ShoppingI
           placeholder="Add an item..."
           className="min-w-0 flex-1 rounded-lg bg-gray-800 px-4 py-3 text-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500"
         />
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as ShoppingItemDTO["category"])}
+          aria-label="Column"
+          className="rounded-lg bg-gray-800 px-4 py-3 text-lg text-white focus:outline-none focus:ring-2 focus:ring-gray-500"
+        >
+          {CATEGORIES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
         <button
           type="submit"
           className="rounded-lg bg-gray-700 px-5 py-3 text-lg text-white hover:bg-gray-600"
@@ -145,24 +196,9 @@ export default function ShoppingList({ initialItems }: { initialItems: ShoppingI
         </button>
       </form>
 
-      <ul className="mt-4">{unchecked.map(renderItem)}</ul>
-
-      {unchecked.length === 0 && (
-        <p className="mt-4 text-sm text-gray-500">Nothing on the list.</p>
-      )}
-
-      {checked.length > 0 && (
-        <div className="mt-4">
-          <button
-            type="button"
-            onClick={() => setShowChecked((v) => !v)}
-            className="text-sm text-gray-500 hover:text-gray-300"
-          >
-            {showChecked ? "Hide" : "Show"} checked off ({checked.length})
-          </button>
-          {showChecked && <ul className="mt-2">{checked.map(renderItem)}</ul>}
-        </div>
-      )}
+      <div className="mt-6 grid grid-cols-1 gap-8 sm:grid-cols-2">
+        {CATEGORIES.map((c) => renderColumn(c.value, c.label))}
+      </div>
 
       {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
     </div>

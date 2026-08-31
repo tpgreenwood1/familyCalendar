@@ -55,6 +55,25 @@ none of its Google Photos/R2/idle-gallery design applies anymore.
   `vercel.json` cron entry exists yet. Completing/skipping an occurrence
   (`setChoreOccurrenceStatus`) never touches the `ChoreSchedule` that generated it, per
   §13.5. Points/rewards/rotation/approval are explicitly out of scope per §13.6.
+  `createChore`/`updateChore` normalize `title` to capitalized casing regardless of input
+  (`lib/textFormat.ts#capitalize`, shared with `lib/shopping.ts`). Adding a chore
+  (`ChoreModal.tsx`, create mode only) offers a fixed starter list
+  (`lib/predefinedChores.ts`) via a dropdown plus a "Custom…" option that reveals a
+  free-text field. The `/chores` board's per-member columns (`ChoreBoard.tsx`/
+  `ChoreColumn.tsx`) are a responsive wrapping grid rather than a fixed-width horizontal
+  scroller. Editing (title, assignee, schedule, active flag, delete) moved off the main
+  board entirely onto a separate `/chores/edit` page (`ChoreEditList.tsx`), filterable by
+  family member, reusing the same `GET/POST/PATCH/DELETE /api/chores` endpoints and the
+  same `["chores"]` TanStack Query cache so edits there are reflected back on `/chores`
+  without a refresh — per §13.7. Clicking a member's name on `/chores`
+  (`ChoreColumn.tsx`) opens `/chores/[memberId]` (`ChoreWeekOverview.tsx`), a read-only
+  overview of that member's chores for the current week only (no prev/next navigation) —
+  per §13.8, deliberately narrower than the "completion history UI" §13.6 excludes.
+  `lib/chores.ts#listChoreOccurrencesForWeek` generates all 7 days via the same idempotent
+  `generateChoreOccurrences` used for a single day, returning the whole family's occurrences
+  for the week (`GET /api/chores/occurrences/week`); the client filters to one member and
+  buckets by day using an exact millisecond offset from the returned `weekStart`, avoiding
+  any client-timezone guessing.
 - Phase 7 (Routines) — `Routine`/`RoutineSchedule`/`RoutineItem`/`RoutineOccurrence`/
   `RoutineItemCompletion` (`DesignSpec.md` §15), `lib/routines.ts` (domain/service layer,
   same shape as `lib/chores.ts` — `generateRoutineOccurrences` is the same idempotent
@@ -73,11 +92,17 @@ none of its Google Photos/R2/idle-gallery design applies anymore.
 - Phase 8 (Shopping) — `ShoppingList`/`ShoppingItem` (`DesignSpec.md` §16), `lib/
   shopping.ts` (domain/service layer). V1 is deliberately minimal: one shared list per
   family (`ShoppingList.familyGroupId` is `@unique`), add/check/uncheck/delete, no
-  quantity/category/store (all explicitly future per §16). The list is created lazily —
+  quantity/store (all explicitly future per §16). The list is created lazily —
   `getOrCreateShoppingList` finds-or-creates it on first read/write rather than at family
   setup — so no signup-flow change was needed. `ShoppingList` stays a separate table from
   `FamilyGroup` (rather than items hanging directly off it) so the spec's future "multiple
-  lists" option doesn't need a schema change later.
+  lists" option doesn't need a schema change later. Every item carries a fixed
+  `ShoppingItemCategory` enum (`GROCERIES` | `OTHER`, defaults to `GROCERIES`) that
+  `ShoppingList.tsx` renders as two side-by-side columns ("Groceries" / "Other Items") —
+  this is a fixed two-bucket split, not the spec's future user-defined categories.
+  `addShoppingItem` normalizes `name` to capitalized casing (first letter uppercase, rest
+  lowercase) regardless of how it was typed, so display stays consistent across the
+  shopping page, dashboard, and wall display without each consumer re-normalizing.
 - Phase 9 (Family Dashboard) — `DesignSpec.md` §17/§40, new `/dashboard` route
   (`app/dashboard/page.tsx`, `components/FamilyDashboard.tsx`,
   `components/MemberDashboardCard.tsx`), linked from the home page's Features grid. No new
@@ -117,6 +142,34 @@ none of its Google Photos/R2/idle-gallery design applies anymore.
   of both `FamilyDashboard` and `WallDisplay` (the latter via a `large` prop, matching the
   sizing pattern `MemberDashboardCard` already uses). Visual-only per spec — no schema, API
   routes, or domain logic, and intentionally not wired to anything.
+- Phase 12 (Special Occasions) — `DesignSpec.md` §16A/§42A, `SpecialOccasion`
+  (`prisma/schema.prisma`), `lib/specialOccasions.ts`. Deliberately just one table, not Chore/
+  Routine's definition+schedule+occurrence trio — nothing here is ever completed/skipped, so
+  there's no occurrence to persist; `computeOccasionFields` derives `nextOccurrenceDate`/
+  `daysUntil`/`isToday`/`computedYears` on every read instead, taking `today` as a parameter
+  (rather than resolving it itself) specifically so it's unit-testable without a family/DB
+  dependency (`lib/specialOccasions.test.ts`), mirroring how `lib/recurrence.test.ts` feeds
+  `expandOccurrences` fixed `Date`s. `originalDate` stores one `DateTime` (year included)
+  rather than a separate "initiating year" field — the year of that date *is* the initiating
+  year. `isSomber` is a plain boolean (not an enum like `RoutinePeriod`), since it's purely a
+  display flag (icon/wording), never a behavioural branch — happy and somber occasions sort
+  and render with equal prominence in the same list. No `FamilyMember` relation by design:
+  `title` is free text, so a pet, grandparent, or deceased relative can have an occasion
+  without a roster card — `FamilyMember.dateOfBirth` (§5.3) is never read by this feature,
+  since no UI anywhere actually collects it yet. `createSpecialOccasion`/
+  `updateSpecialOccasion` deliberately skip the `capitalize()` normalization `lib/chores.ts`/
+  `lib/shopping.ts` apply to their titles, since occasion titles are free-text phrases ("Mum's
+  Birthday") that normalization would mangle. `GET /api/special-occasions` returns the whole
+  family's occasions pre-sorted soonest-first with the computed fields already attached —
+  there's no separate "upcoming" endpoint; the dashboard card and wall tile just filter the
+  same list to `daysUntil <= 7` client-side, the same way `FamilyDashboard` already filters
+  chore/routine occurrences per member. `components/SpecialOccasionList.tsx` owns its own
+  TanStack Query key/mutations (`SPECIAL_OCCASIONS_QUERY_KEY`/`fetchSpecialOccasions`) and is
+  reused as-is for both the `/occasions` page and `WallDisplay`'s tap-to-open focused view, the
+  same way `ShoppingList.tsx` is shared between `/shopping` and the wall's shopping focus view;
+  `components/SpecialOccasionCard.tsx` is the dashboard-only 7-day digest, and `WallDisplay`
+  gained an `occasionsOpen` state mirroring `shoppingOpen` (including in `useIdleReturn`'s
+  active-condition).
 - Documentation (§48) — `docs/SPEC.md` (product baseline), `docs/ARCHITECTURE.md` (layers,
   directory map, request flow), `docs/DATABASE.md` (schema), `docs/API.md` (every route), and
   `docs/ROADMAP.md` (phase-by-phase status, superseding the ad hoc "Done so far"/"Not built
@@ -125,6 +178,25 @@ none of its Google Photos/R2/idle-gallery design applies anymore.
   named phase: Vitest (`vitest.config.ts`, `npm test`) with unit coverage for
   `lib/recurrence.ts`, `lib/schemas.ts`, and `lib/authz.ts` — the first slice of the Testing
   Strategy (§43); integration/e2e tests are still outstanding, see `docs/ROADMAP.md`.
+- Shared UI shell (not yet a named phase) — `components/Header.tsx` (async Server Component;
+  independently resolves the signed-in user's family name the same way every page-level
+  Server Component already does, and renders it as a link back to `/`), `components/
+  HeaderNav.tsx` (client, `usePathname`-based active-link highlighting across Home/Dashboard/
+  Calendar/Chores/Routines/Shopping/Occasions/To Do/Wall/Family/Settings), and
+  `components/Footer.tsx`.
+  These replace the identical "← Home" `Link` block that used to be copy-pasted across six
+  page files. Every authenticated page now composes `<Header /><main>...</main><Footer />`;
+  `/wall` (full-screen kiosk display), `/login`, and `/family-setup` (pre-family-membership
+  flows) deliberately stay chrome-free. `app/page.tsx` now renders only the feature tiles plus
+  `components/ClockWidget.tsx` (client, live day/date/time in browser-local time — same
+  timezone approximation the dashboard/wall already use, not the family's IANA timezone) and
+  `components/WeatherWidget.tsx` (client, polls `GET /api/weather` every 15 minutes).
+  `lib/weather.ts`/`app/api/weather/route.ts` call Open-Meteo (no API key required) using
+  `WEATHER_LAT`/`WEATHER_LON` env vars, defaulting to London to match `FamilyGroup.timezone`'s
+  default. Family-profile editing, invite-code generation, and family-member management
+  (`FamilyCalendarTitle`, `InviteCodeCard`, `FamilyMemberManager`) moved off the home page onto
+  a new `/family` page; a new `/settings` page is a "Coming soon" placeholder reserved for
+  future general app settings (distinct from `/family`'s household/member management).
 
 **Not built yet:** Adult-membership management (removing another adult from the family).
 Calendar has no calendar-integration sync (Google/Apple) and no per-occurrence recurrence
@@ -133,7 +205,10 @@ has no alternative-schedule holiday mode (§15.4's other option) — only the "d
 behaviour described above.
 
 Current domain model: `FamilyGroup` (≈ spec's `Family`) has `FamilyMember`s, `Todo`s,
-`CalendarEvent`s, `Chore`s, `Routine`s, and one `ShoppingList`. Authenticated adults are
+`CalendarEvent`s, `Chore`s, `Routine`s, one `ShoppingList`, and `SpecialOccasion`s.
+`SpecialOccasion` is the one domain table that hangs directly off `FamilyGroup` with no
+`FamilyMember` relation at all — every other domain table below ties back to a `FamilyMember`
+somewhere. Authenticated adults are
 Better Auth `User`s linked to a `FamilyGroup` via `FamilyMembership` (one family per user for
 now — multi-family
 membership is explicitly out of scope) and, separately, to their own `FamilyMember` row via

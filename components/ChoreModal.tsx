@@ -5,6 +5,9 @@ import type { FamilyMember } from "@prisma/client";
 import type { ChoreDTO } from "@/lib/chores";
 import { getFamilyMemberColor } from "@/lib/familyMemberColors";
 import { getFamilyMemberAvatar } from "@/lib/familyMemberAvatars";
+import { PREDEFINED_CHORES } from "@/lib/predefinedChores";
+
+const CUSTOM_TITLE = "__custom__";
 
 export type ChoreFormPayload = {
   title: string;
@@ -33,14 +36,15 @@ export default function ChoreModal({
   chore?: ChoreDTO;
   familyMembers: FamilyMember[];
   onClose: () => void;
-  onCreate: (payload: ChoreFormPayload) => Promise<boolean>;
-  onUpdate: (choreId: number, payload: ChoreFormPayload & { active: boolean }) => Promise<boolean>;
-  onDelete: (choreId: number) => Promise<boolean>;
+  onCreate?: (payload: ChoreFormPayload) => Promise<boolean>;
+  onUpdate?: (choreId: number, payload: ChoreFormPayload & { active: boolean }) => Promise<boolean>;
+  onDelete?: (choreId: number) => Promise<boolean>;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [title, setTitle] = useState(chore?.title ?? "");
+  const [title, setTitle] = useState(chore?.title ?? PREDEFINED_CHORES[0]);
+  const [useCustomTitle, setUseCustomTitle] = useState(!!chore);
   const [description, setDescription] = useState(chore?.description ?? "");
   const [familyMemberId, setFamilyMemberId] = useState<number | null>(
     chore?.familyMemberId ?? familyMembers[0]?.id ?? null
@@ -78,8 +82,8 @@ export default function ChoreModal({
 
     setSaving(true);
     const success = chore
-      ? await onUpdate(chore.id, { ...payload, active })
-      : await onCreate(payload);
+      ? ((await onUpdate?.(chore.id, { ...payload, active })) ?? false)
+      : ((await onCreate?.(payload)) ?? false);
     setSaving(false);
 
     if (success) onClose();
@@ -91,7 +95,7 @@ export default function ChoreModal({
     if (!window.confirm(`Delete "${chore.title}"? This removes its whole history.`)) return;
 
     setSaving(true);
-    const success = await onDelete(chore.id);
+    const success = (await onDelete?.(chore.id)) ?? false;
     setSaving(false);
 
     if (success) onClose();
@@ -110,14 +114,38 @@ export default function ChoreModal({
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <h2 className="text-2xl font-medium text-white">{chore ? "Edit chore" : "Add chore"}</h2>
 
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Chore (e.g. Empty dishwasher)"
-            autoFocus
-            className="rounded-lg bg-gray-800 px-4 py-3 text-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500"
-          />
+          {!chore && !useCustomTitle && (
+            <select
+              value={title}
+              onChange={(e) => {
+                if (e.target.value === CUSTOM_TITLE) {
+                  setUseCustomTitle(true);
+                  setTitle("");
+                } else {
+                  setTitle(e.target.value);
+                }
+              }}
+              className="rounded-lg bg-gray-800 px-4 py-3 text-lg text-white focus:outline-none focus:ring-2 focus:ring-gray-500"
+            >
+              {PREDEFINED_CHORES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+              <option value={CUSTOM_TITLE}>Custom…</option>
+            </select>
+          )}
+
+          {(chore || useCustomTitle) && (
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Chore (e.g. Empty dishwasher)"
+              autoFocus
+              className="rounded-lg bg-gray-800 px-4 py-3 text-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-500"
+            />
+          )}
 
           <textarea
             value={description}

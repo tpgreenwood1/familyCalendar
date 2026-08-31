@@ -17,8 +17,16 @@ export default async function WallPage() {
   const membership = await getFamilyMembership(user.id);
   if (!membership) redirect("/family-setup");
 
-  const { familyMembers, todos, choreOccurrences, routineOccurrences, events, shoppingItems, error } =
-    await getDashboardData({ user, familyGroupId: membership.familyGroupId });
+  const {
+    familyMembers,
+    todos,
+    choreOccurrences,
+    routineOccurrences,
+    events,
+    shoppingItems,
+    specialOccasions,
+    error,
+  } = await getDashboardData({ user, familyGroupId: membership.familyGroupId });
 
   return (
     <WallDisplay
@@ -28,6 +36,7 @@ export default async function WallPage() {
       initialRoutineOccurrences={routineOccurrences}
       initialEvents={events}
       initialShoppingItems={shoppingItems}
+      initialSpecialOccasions={specialOccasions}
       loadError={error}
     />
   );

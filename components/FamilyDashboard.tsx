@@ -6,10 +6,12 @@ import type { ChoreOccurrenceDTO } from "@/lib/chores";
 import type { RoutineOccurrenceDTO } from "@/lib/routines";
 import type { CalendarOccurrenceDTO } from "@/lib/calendar";
 import type { ShoppingItemDTO } from "@/lib/shopping";
+import type { SpecialOccasionDTO } from "@/lib/specialOccasions";
 import { useDashboardQueries } from "@/lib/useDashboardQueries";
 import { getFamilyMemberColor } from "@/lib/familyMemberColors";
 import MemberDashboardCard from "@/components/MemberDashboardCard";
 import ShoppingList from "@/components/ShoppingList";
+import SpecialOccasionCard from "@/components/SpecialOccasionCard";
 import FuturePlaceholderTiles from "@/components/FuturePlaceholderTiles";
 
 function formatEventTime(occurrence: CalendarOccurrenceDTO): string {
@@ -27,6 +29,7 @@ export default function FamilyDashboard({
   initialRoutineOccurrences,
   initialEvents,
   initialShoppingItems,
+  initialSpecialOccasions,
 }: {
   familyMembers: FamilyMember[];
   initialTodos: Todo[];
@@ -34,6 +37,7 @@ export default function FamilyDashboard({
   initialRoutineOccurrences: RoutineOccurrenceDTO[];
   initialEvents: CalendarOccurrenceDTO[];
   initialShoppingItems: ShoppingItemDTO[];
+  initialSpecialOccasions: SpecialOccasionDTO[];
 }) {
   const {
     todos,
@@ -92,6 +96,8 @@ export default function FamilyDashboard({
           ))}
         </ul>
       </div>
+
+      <SpecialOccasionCard initialOccasions={initialSpecialOccasions} />
 
       <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
         {familyMembers.map((member) => (

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { FamilyMember } from "@prisma/client";
 import type { RoutineOccurrenceDTO } from "@/lib/routines";
 import { getFamilyMemberColor } from "@/lib/familyMemberColors";
@@ -15,12 +16,10 @@ export default function RoutineColumn({
   member,
   occurrences,
   onToggleItem,
-  onEditRoutine,
 }: {
   member: FamilyMember;
   occurrences: RoutineOccurrenceDTO[];
   onToggleItem: (occurrenceId: number, itemId: number, completed: boolean) => void;
-  onEditRoutine: (routineId: number) => void;
 }) {
   const color = getFamilyMemberColor(member.color);
   const byPeriod = [...occurrences].sort(
@@ -28,8 +27,10 @@ export default function RoutineColumn({
   );
 
   return (
-    <div className={`w-80 shrink-0 rounded-xl border-t-4 bg-gray-900 p-6 ${color.accent}`}>
-      <h2 className="mb-6 text-2xl font-medium text-white">{member.name}</h2>
+    <div className={`rounded-xl border-t-4 bg-gray-900 p-6 ${color.accent}`}>
+      <Link href={`/routines/${member.id}`} className="mb-6 block text-2xl font-medium text-white hover:underline">
+        {member.name}
+      </Link>
 
       {byPeriod.length === 0 && <p className="text-sm text-gray-500">No routines today.</p>}
 
@@ -37,18 +38,14 @@ export default function RoutineColumn({
         const doneCount = occurrence.items.filter((i) => i.completed).length;
         return (
           <div key={occurrence.id} className="mb-6">
-            <button
-              type="button"
-              onClick={() => onEditRoutine(occurrence.routineId)}
-              className="mb-2 flex w-full items-baseline justify-between text-left"
-            >
+            <div className="mb-2 flex items-baseline justify-between">
               <span className="text-sm font-medium uppercase tracking-wide text-gray-400">
                 {PERIOD_LABELS[occurrence.period] ?? occurrence.period} · {occurrence.name}
               </span>
               <span className="text-xs text-gray-500">
                 {doneCount}/{occurrence.items.length}
               </span>
-            </button>
+            </div>
             <ul>
               {occurrence.items.map((item) => (
                 <li

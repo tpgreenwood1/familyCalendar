@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { FamilyMember } from "@prisma/client";
 import { getCurrentUser, getFamilyMembership, type FamilyContext } from "@/lib/authz";
@@ -7,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { listEventsInRange, type CalendarOccurrenceDTO } from "@/lib/calendar";
 import { getViewRange } from "@/lib/calendarViewRange";
 import CalendarBoard from "@/components/CalendarBoard";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
 
 export const dynamic = "force-dynamic";
 
@@ -48,23 +49,21 @@ export default async function CalendarPage() {
   });
 
   return (
-    <main className="flex min-h-screen flex-col items-center bg-gray-950 px-6 py-16">
-      <Link
-        href="/"
-        className="mb-6 rounded-lg px-6 py-3 text-xl text-gray-400 hover:text-white"
-      >
-        ← Home
-      </Link>
-      <h1 className="text-3xl font-light tracking-widest text-white">Calendar</h1>
-      {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
-      {familyMembers.length === 0 && !error && (
-        <p className="mt-10 text-xl text-gray-400">
-          No family members yet — add one from the Home page to get started.
-        </p>
-      )}
-      <div className="mt-10 w-full max-w-6xl px-4">
-        <CalendarBoard initialEvents={events} familyMembers={familyMembers} />
-      </div>
-    </main>
+    <div className="flex min-h-screen flex-col bg-gray-950">
+      <Header />
+      <main className="flex flex-1 flex-col items-center px-6 py-16">
+        <h1 className="text-3xl font-light tracking-widest text-white">Calendar</h1>
+        {error && <p className="mt-4 text-sm text-gray-500">{error}</p>}
+        {familyMembers.length === 0 && !error && (
+          <p className="mt-10 text-xl text-gray-400">
+            No family members yet — add one from the Family page to get started.
+          </p>
+        )}
+        <div className="mt-10 w-full max-w-6xl px-4">
+          <CalendarBoard initialEvents={events} familyMembers={familyMembers} />
+        </div>
+      </main>
+      <Footer />
+    </div>
   );
 }

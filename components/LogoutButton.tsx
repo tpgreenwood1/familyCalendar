@@ -14,7 +14,7 @@ export default function LogoutButton() {
           fetchOptions: { onSuccess: () => router.push("/login") },
         })
       }
-      className="rounded-lg bg-gray-700 px-6 py-3 text-lg text-white hover:bg-gray-600"
+      className="rounded-lg bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700"
     >
       Log Out
     </button>

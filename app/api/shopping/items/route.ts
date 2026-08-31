@@ -19,8 +19,8 @@ export async function POST(request: Request) {
     const ctx = await requireSession();
     requireCan(ctx, "shoppingItem.manage");
 
-    const { name } = shoppingItemCreateSchema.parse(await request.json());
-    const item = await addShoppingItem(ctx, name);
+    const { name, category } = shoppingItemCreateSchema.parse(await request.json());
+    const item = await addShoppingItem(ctx, name, category ?? "GROCERIES");
 
     return NextResponse.json(item, { status: 201 });
   } catch (error) {

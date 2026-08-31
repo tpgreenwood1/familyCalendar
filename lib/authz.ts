@@ -53,7 +53,8 @@ export type Action =
   | "choreOccurrence.manage"
   | "routine.manage"
   | "routineOccurrence.manage"
-  | "shoppingItem.manage";
+  | "shoppingItem.manage"
+  | "specialOccasion.manage";
 
 export function can(context: FamilyContext, action: Action): boolean {
   switch (action) {
@@ -67,6 +68,7 @@ export function can(context: FamilyContext, action: Action): boolean {
     case "routine.manage":
     case "routineOccurrence.manage":
     case "shoppingItem.manage":
+    case "specialOccasion.manage":
       return true;
   }
 }

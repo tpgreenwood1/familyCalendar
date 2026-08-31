@@ -86,6 +86,9 @@ convention (0 = Sunday .. 6 = Saturday). `ChoreOccurrence` is generated idempote
 `createMany({ skipDuplicates: true })` — and denormalizes `familyGroupId` from `Chore` so the
 family+date index doesn't need a join. Completing/skipping an occurrence
 (`setChoreOccurrenceStatus`) never writes back to the `ChoreSchedule` that produced it.
+`title` is stored capitalized (first letter uppercase, rest lowercase) via the shared
+`lib/textFormat.ts#capitalize` (also used by `lib/shopping.ts`), regardless of input
+casing — no schema change, just normalization in `createChore`/`updateChore`.
 
 ## Routines
 
@@ -106,8 +109,28 @@ column, so a `GET` of a day's occurrence never needs a separate reset step.
 **`ShoppingList`** is `@unique` on `familyGroupId` — one shared list per family, created lazily
 by `getOrCreateShoppingList` on first read/write rather than at family setup. Kept as its own
 table (rather than items hanging directly off `FamilyGroup`) so a future "multiple lists"
-option doesn't need a schema change. **`ShoppingItem`** is deliberately minimal: `name` and
-`checked`/`checkedAt` only — no quantity, category, or store.
+option doesn't need a schema change. **`ShoppingItem`** is deliberately minimal: `name`,
+a fixed two-value `category` (`ShoppingItemCategory` enum: `GROCERIES` | `OTHER`, defaults to
+`GROCERIES`, driving the UI's two display columns), and `checked`/`checkedAt` only — no
+quantity or store, and no user-defined categories beyond the two. `name` is stored
+capitalized (first letter uppercase, rest lowercase) by `lib/shopping.ts#addShoppingItem`
+regardless of input casing, so every consumer renders it consistently.
+
+## Special Occasions
+
+**`SpecialOccasion`** is a single table — unlike Chore/Routine's definition+schedule+occurrence
+trio, nothing here is ever completed or skipped, so there's no per-day state to generate or
+persist. `title`, `type` (`SpecialOccasionType` enum: `BIRTHDAY` | `ANNIVERSARY`),
+`originalDate` (the actual birth/wedding/death date, full year included — the year *is* the
+"initiating year" used for age/years-since math, so there's no separate year column), and
+`isSomber` (a plain boolean, display-only — flips icon/wording but never suppresses or
+reorders an entry) are the only fields. There is deliberately **no `FamilyMember` relation**:
+`title` is free text, so a pet, a grandparent, or a deceased relative can have an occasion
+without a roster card, and `FamilyMember.dateOfBirth` is never read by this feature. "Next
+occurrence date", "days until", and "years since"/"turning N" are computed on every read by
+`lib/specialOccasions.ts#computeOccasionFields` (a Feb 29 `originalDate` is observed on Feb 28
+in a non-leap candidate year) rather than generated and stored, so there's no index beyond
+`familyGroupId` and no unique constraint (duplicate titles/dates — e.g. twins — are legitimate).
 
 ## Family isolation
 

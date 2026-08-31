@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { FamilyMember } from "@prisma/client";
 import type { ChoreOccurrenceDTO } from "@/lib/chores";
 import { getFamilyMemberColor } from "@/lib/familyMemberColors";
@@ -10,20 +11,20 @@ export default function ChoreColumn({
   onComplete,
   onSkip,
   onReset,
-  onEditChore,
 }: {
   member: FamilyMember;
   occurrences: ChoreOccurrenceDTO[];
   onComplete: (id: number) => void;
   onSkip: (id: number) => void;
   onReset: (id: number) => void;
-  onEditChore: (choreId: number) => void;
 }) {
   const color = getFamilyMemberColor(member.color);
 
   return (
-    <div className={`w-80 shrink-0 rounded-xl border-t-4 bg-gray-900 p-6 ${color.accent}`}>
-      <h2 className="mb-6 text-2xl font-medium text-white">{member.name}</h2>
+    <div className={`rounded-xl border-t-4 bg-gray-900 p-6 ${color.accent}`}>
+      <Link href={`/chores/${member.id}`} className="mb-6 block text-2xl font-medium text-white hover:underline">
+        {member.name}
+      </Link>
 
       {occurrences.length === 0 && <p className="text-sm text-gray-500">No chores today.</p>}
 
@@ -40,10 +41,8 @@ export default function ChoreColumn({
               className="h-8 w-8 shrink-0 accent-gray-500"
             />
 
-            <button
-              type="button"
-              onClick={() => onEditChore(occurrence.choreId)}
-              className={`flex-1 truncate text-left text-base ${
+            <span
+              className={`flex-1 truncate text-base ${
                 occurrence.status === "COMPLETED"
                   ? "text-gray-500 line-through"
                   : occurrence.status === "SKIPPED"
@@ -52,7 +51,7 @@ export default function ChoreColumn({
               }`}
             >
               {occurrence.title}
-            </button>
+            </span>
 
             {occurrence.status === "SKIPPED" ? (
               <button

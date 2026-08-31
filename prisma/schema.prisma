@@ -33,6 +33,7 @@ model FamilyGroup {
   routines           Routine[]
   routineOccurrences RoutineOccurrence[]
   shoppingList       ShoppingList?
+  specialOccasions   SpecialOccasion[]
 }
 
 /// Pre-Better-Auth NextAuth user table (DesignSpec.md §6.1 migration step 2/3).
@@ -437,17 +438,63 @@ model ShoppingList {
   items         ShoppingItem[]
 }
 
-/// One entry on the shared list (§16). V1 is deliberately minimal -- no quantity,
-/// category, or store (all explicitly future) -- so `checked` is the only mutable state
+/// Which of the two display columns (§16) an item sorts into. Deliberately just two
+/// buckets for now -- no user-defined categories/store aisles (still future per §16).
+enum ShoppingItemCategory {
+  GROCERIES
+  OTHER
+}
+
+/// One entry on the shared list (§16). V1 is deliberately minimal -- no quantity or store
+/// (still explicitly future) -- so `checked` and `category` are the only mutable state
 /// besides the name; unchecking just flips it back rather than deleting/recreating the row.
+/// `name` is stored capitalized (first letter upper, rest lower) regardless of input casing
+/// -- see capitalizeItemName in lib/shopping.ts -- so every view renders it consistently
+/// without each consumer re-normalizing.
 model ShoppingItem {
-  id             Int          @id @default(autoincrement())
+  id             Int                  @id @default(autoincrement())
   shoppingListId Int
-  shoppingList   ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  shoppingList   ShoppingList         @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
   name           String
-  checked        Boolean      @default(false)
+  category       ShoppingItemCategory @default(GROCERIES)
+  checked        Boolean              @default(false)
   checkedAt      DateTime?
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime             @default(now())
 
   @@index([shoppingListId])
+}
+
+enum SpecialOccasionType {
+  BIRTHDAY
+  ANNIVERSARY
+}
+
+/// A year-round recurring event (DesignSpec.md §16A) -- deliberately just one table, not a
+/// Chore/Routine-style definition+schedule+occurrence trio: nothing here is ever completed
+/// or skipped, so there's no per-day state to persist. "Next occurrence"/"days until"/
+/// "turning N" are computed on every read instead (lib/specialOccasions.ts), not generated
+/// and stored. Standalone by design -- no FamilyMember relation, so a pet, a deceased
+/// relative, or anyone else can have an occasion via free-text `title` alone (unlike
+/// FamilyMember.dateOfBirth, which only covers people with a roster card, and isn't read by
+/// this feature).
+model SpecialOccasion {
+  id            Int                 @id @default(autoincrement())
+  title         String
+  type          SpecialOccasionType
+  /// The actual birth/wedding/death date, full year included -- the year IS the
+  /// "initiating year" used to compute "turning N"/"N years since"
+  /// (lib/specialOccasions.ts#computeOccasionFields). Stored the same YYYY-MM-DD ->
+  /// UTC-midnight way as FamilyMember.dateOfBirth, and always read back with the UTC
+  /// getters for that reason, regardless of FamilyGroup.timezone.
+  originalDate  DateTime
+  /// Display-only (DesignSpec.md §16A): flips icon/wording (e.g. "It's ... Today!" vs
+  /// "Today marks N years since ...") but never suppresses or reorders the entry -- happy
+  /// and somber occasions sort and display with equal prominence.
+  isSomber      Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  familyGroupId Int
+  familyGroup   FamilyGroup         @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
+
+  @@index([familyGroupId])
 }
