@@ -5,9 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { subscribeToFamilyEvents } from "@/lib/realtime";
 import type { ShoppingItemDTO } from "@/lib/shopping";
 
-const QUERY_KEY = ["shopping-items"];
+export const SHOPPING_ITEMS_QUERY_KEY = ["shopping-items"];
+const QUERY_KEY = SHOPPING_ITEMS_QUERY_KEY;
 
-async function fetchShoppingItems(): Promise<ShoppingItemDTO[]> {
+export async function fetchShoppingItems(): Promise<ShoppingItemDTO[]> {
   const res = await fetch("/api/shopping/items");
   if (!res.ok) throw new Error("Could not load shopping list");
   return res.json();

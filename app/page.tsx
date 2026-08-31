@@ -60,6 +60,13 @@ export default async function Home() {
       </h2>
       <div className="mt-6 flex flex-wrap justify-center gap-6">
         <Link
+          href="/dashboard"
+          className="flex w-56 flex-col items-center gap-3 rounded-2xl bg-gray-900 px-6 py-8 text-white hover:bg-gray-800"
+        >
+          <span className="text-4xl">🏠</span>
+          <span className="text-xl font-medium">Dashboard</span>
+        </Link>
+        <Link
           href="/todo"
           className="flex w-56 flex-col items-center gap-3 rounded-2xl bg-gray-900 px-6 py-8 text-white hover:bg-gray-800"
         >
@@ -93,6 +100,13 @@ export default async function Home() {
         >
           <span className="text-4xl">🛒</span>
           <span className="text-xl font-medium">Shopping List</span>
+        </Link>
+        <Link
+          href="/wall"
+          className="flex w-56 flex-col items-center gap-3 rounded-2xl bg-gray-900 px-6 py-8 text-white hover:bg-gray-800"
+        >
+          <span className="text-4xl">🖥️</span>
+          <span className="text-xl font-medium">Wall Display</span>
         </Link>
         <div className="flex w-56 flex-col items-center gap-3 rounded-2xl bg-gray-900/50 px-6 py-8 text-gray-500">
           <span className="text-4xl grayscale opacity-50">📷</span>

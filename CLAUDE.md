@@ -78,12 +78,59 @@ none of its Google Photos/R2/idle-gallery design applies anymore.
   setup — so no signup-flow change was needed. `ShoppingList` stays a separate table from
   `FamilyGroup` (rather than items hanging directly off it) so the spec's future "multiple
   lists" option doesn't need a schema change later.
+- Phase 9 (Family Dashboard) — `DesignSpec.md` §17/§40, new `/dashboard` route
+  (`app/dashboard/page.tsx`, `components/FamilyDashboard.tsx`,
+  `components/MemberDashboardCard.tsx`), linked from the home page's Features grid. No new
+  domain logic or API routes — it's a read/combine layer over the existing five domains'
+  service functions and endpoints, reusing the exact same TanStack Query keys
+  (`["todos"]`, `["chore-occurrences"]`, `["routine-occurrences"]`, `["calendar-events", ...]`,
+  `["shopping-items"]`) as their dedicated pages so cache stays coherent when navigating
+  between them. Per-member cards combine that member's today's chore occurrences, today's
+  routine occurrences/items, and incomplete todos (todos have no due date in V1, so "today's
+  todos" is just "incomplete todos") with inline complete/skip/tick controls; a separate
+  card lists today's calendar events; the shopping list is the existing `ShoppingList`
+  component embedded as-is rather than re-implemented. "Today" for both the dashboard's
+  server-rendered initial data and its client-side refetch is computed from local
+  (server/browser) time via `getViewRange("day", ...)`, matching the same approximation
+  `app/calendar/page.tsx` and `CalendarBoard` already use rather than the family's IANA
+  timezone.
+- Phase 10 (Wall Display) — `DesignSpec.md` §18/§41, new `/wall` route
+  (`app/wall/page.tsx`, `components/WallDisplay.tsx`). Fetches the same data as `/dashboard`
+  via a shared `lib/dashboardData.ts#getDashboardData`, and shares its TanStack Query
+  hooks/mutations with `FamilyDashboard` via `lib/useDashboardQueries.ts` (extracted in this
+  phase) so both views' caches stay coherent regardless of which is mounted. The wall is its
+  own full-screen layout, not a CSS-scaled dashboard: a big clock/date, a compact member-tile
+  overview (name + done-today count, no per-item detail), a horizontally-scrolling "Today's
+  Calendar" strip, and a "Shopping List" tile. Tapping a member tile or the shopping tile
+  drills into a large-format focus view — `MemberDashboardCard` grew a `large` prop (bigger
+  type, `h-10 w-10` checkboxes) rather than a separate component, since it's the same data
+  and mutations, just sized for across-the-room use; the shopping focus view reuses
+  `ShoppingList` as-is. `lib/useIdleReturn.ts` implements "automatic return to dashboard
+  after inactivity" (§18): 30s with no touch/pointer/key activity while a focus view is open
+  snaps back to the overview; the overview itself has nothing to idle out of. A
+  `portrait:flex` overlay (Tailwind's built-in orientation variant) nudges rotation on a
+  portrait tablet — CSS-only, no JS orientation detection. No new domain logic, API routes,
+  or auth changes — Better Auth's already-indefinite kiosk session (`lib/auth.ts`) already
+  satisfies §18's "don't require repeated login" requirement.
+- Phase 11 (Future Placeholders) — `DesignSpec.md` §42, `components/FuturePlaceholderTiles.tsx`.
+  Two disabled, non-interactive tiles ("⭐ Rewards", "🍽 Meal Planning") rendered at the bottom
+  of both `FamilyDashboard` and `WallDisplay` (the latter via a `large` prop, matching the
+  sizing pattern `MemberDashboardCard` already uses). Visual-only per spec — no schema, API
+  routes, or domain logic, and intentionally not wired to anything.
+- Documentation (§48) — `docs/SPEC.md` (product baseline), `docs/ARCHITECTURE.md` (layers,
+  directory map, request flow), `docs/DATABASE.md` (schema), `docs/API.md` (every route), and
+  `docs/ROADMAP.md` (phase-by-phase status, superseding the ad hoc "Done so far"/"Not built
+  yet" bullets below as the canonical status list) — added alongside the pre-existing
+  `docs/AUTH.md` and `docs/ARCHITECTURE_AUDIT.md`. Also in the working tree but not yet a
+  named phase: Vitest (`vitest.config.ts`, `npm test`) with unit coverage for
+  `lib/recurrence.ts`, `lib/schemas.ts`, and `lib/authz.ts` — the first slice of the Testing
+  Strategy (§43); integration/e2e tests are still outstanding, see `docs/ROADMAP.md`.
 
-**Not built yet:** Wall display mode and adult-membership management (removing another
-adult from the family). Calendar has no calendar-integration sync (Google/Apple) and no
-per-occurrence recurrence editing yet — both are explicitly future phases in the spec, not
-gaps in Phase 5. Routines has no alternative-schedule holiday mode (§15.4's other option) —
-only the "disable" behaviour described above.
+**Not built yet:** Adult-membership management (removing another adult from the family).
+Calendar has no calendar-integration sync (Google/Apple) and no per-occurrence recurrence
+editing yet — both are explicitly future phases in the spec, not gaps in Phase 5. Routines
+has no alternative-schedule holiday mode (§15.4's other option) — only the "disable"
+behaviour described above.
 
 Current domain model: `FamilyGroup` (≈ spec's `Family`) has `FamilyMember`s, `Todo`s,
 `CalendarEvent`s, `Chore`s, `Routine`s, and one `ShoppingList`. Authenticated adults are
@@ -110,6 +157,8 @@ first — don't assume the spec-described code already exists.
 npm run dev          # dev server at http://localhost:3000
 npm run build        # next build (Vercel prepends `npx prisma generate`)
 npm run lint         # next lint (eslint-config-next)
+npm test             # vitest run -- unit tests (lib/*.test.ts)
+npm run test:watch   # vitest, watch mode
 npx prisma db seed   # runs prisma/seed.ts via ts-node (upserts app_label)
 ```
 
@@ -129,7 +178,13 @@ prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script`, revie
 placed in a new `prisma/migrations/<timestamp>_<name>/migration.sql`) and apply it with
 `npx prisma migrate deploy`, which doesn't prompt.
 
-There is no test runner configured.
+Vitest is configured (`vitest.config.ts`) but only covers unit-testable `lib/` modules so far
+(`recurrence.test.ts`, `schemas.test.ts`, `authz.test.ts`) — no integration or end-to-end
+runner exists yet (§43 of `DesignSpec.md`; see `docs/ROADMAP.md`).
+
+See `docs/` for the maintained reference docs — `SPEC.md` (product baseline),
+`ARCHITECTURE.md`, `DATABASE.md`, `API.md`, `AUTH.md`, `ROADMAP.md` — kept up to date per §48;
+prefer updating those over expanding this file's "Architecture notes" section further.
 
 ## Architecture notes that aren't obvious from a single file
 
