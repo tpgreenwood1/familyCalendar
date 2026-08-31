@@ -23,6 +23,7 @@ phase's decisions — this file is the shorter at-a-glance list.
 | 11 — Future Placeholders | §42 | `FuturePlaceholderTiles` (Rewards, Meal Planning) — disabled, visual-only tiles on both Dashboard and Wall. |
 | 12 — Special Occasions | §16A/§42A | `SpecialOccasion`, `lib/specialOccasions.ts`. Single table, computed-on-read next-occurrence/age (no schedule/occurrence split, no `FamilyMember` relation). `/occasions` year overview, Dashboard/Wall 7-day digest. |
 | 48 — Documentation | §48 | This file plus `docs/ARCHITECTURE.md`, `docs/DATABASE.md`, `docs/API.md`, `docs/SPEC.md`; `docs/AUTH.md` and `docs/ARCHITECTURE_AUDIT.md` predate this pass and are unchanged. |
+| 13 — Photo Screensaver | §16B/§42B | `PhotoAlbum`/`Photo` (Vercel Blob-backed, no external sync) plus flat screensaver settings on `FamilyGroup`, `lib/photos.ts`. `/photos` management page; a "Photos" tile on Dashboard/Wall (manual trigger); Wall-only automatic idle trigger via a second `useIdleReturn` timer. Requires a `BLOB_READ_WRITE_TOKEN` (see `.env.example`). |
 
 **Also done, not yet a named phase:** a shared `Header`/`HeaderNav`/`Footer` app shell (see
 `docs/ARCHITECTURE.md`'s "Shared chrome" section) replacing the per-page "← Home" link that used

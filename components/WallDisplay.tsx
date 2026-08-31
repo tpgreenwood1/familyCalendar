@@ -9,8 +9,10 @@ import type { RoutineOccurrenceDTO } from "@/lib/routines";
 import type { CalendarOccurrenceDTO } from "@/lib/calendar";
 import type { ShoppingItemDTO } from "@/lib/shopping";
 import type { SpecialOccasionDTO } from "@/lib/specialOccasions";
+import type { ScreensaverSettingsDTO } from "@/lib/photos";
 import { useDashboardQueries } from "@/lib/useDashboardQueries";
 import { useIdleReturn } from "@/lib/useIdleReturn";
+import { usePhotoScreensaver } from "@/lib/usePhotoScreensaver";
 import { subscribeToFamilyEvents } from "@/lib/realtime";
 import { getFamilyMemberColor } from "@/lib/familyMemberColors";
 import MemberDashboardCard from "@/components/MemberDashboardCard";
@@ -19,6 +21,7 @@ import SpecialOccasionList, {
   SPECIAL_OCCASIONS_QUERY_KEY,
   fetchSpecialOccasions,
 } from "@/components/SpecialOccasionList";
+import PhotoScreensaver from "@/components/PhotoScreensaver";
 import FuturePlaceholderTiles from "@/components/FuturePlaceholderTiles";
 
 /** How long the wall can sit on a member/shopping focus view with no touch before it
@@ -50,6 +53,7 @@ export default function WallDisplay({
   initialEvents,
   initialShoppingItems,
   initialSpecialOccasions,
+  initialScreensaverSettings,
   loadError,
 }: {
   familyMembers: FamilyMember[];
@@ -59,6 +63,7 @@ export default function WallDisplay({
   initialEvents: CalendarOccurrenceDTO[];
   initialShoppingItems: ShoppingItemDTO[];
   initialSpecialOccasions: SpecialOccasionDTO[];
+  initialScreensaverSettings: ScreensaverSettingsDTO;
   loadError?: string;
 }) {
   const {
@@ -82,7 +87,9 @@ export default function WallDisplay({
   const [focusedMemberId, setFocusedMemberId] = useState<number | null>(null);
   const [shoppingOpen, setShoppingOpen] = useState(false);
   const [occasionsOpen, setOccasionsOpen] = useState(false);
+  const [screensaverOpen, setScreensaverOpen] = useState(false);
   const now = useClock();
+  const screensaverSettings = usePhotoScreensaver(initialScreensaverSettings);
 
   const returnToOverview = () => {
     setFocusedMemberId(null);
@@ -94,6 +101,16 @@ export default function WallDisplay({
     focusedMemberId !== null || shoppingOpen || occasionsOpen,
     IDLE_RETURN_MS,
     returnToOverview
+  );
+
+  // Automatic screensaver (DesignSpec.md §16B/§18): only while the wall is sitting on the
+  // plain overview (nothing else focused, screensaver not already open) -- a second,
+  // independent idle timer from the 30s one above, using the household's configured delay.
+  const atOverview = focusedMemberId === null && !shoppingOpen && !occasionsOpen && !screensaverOpen;
+  useIdleReturn(
+    screensaverSettings.enabled && screensaverSettings.albumId !== null && atOverview,
+    screensaverSettings.idleSeconds * 1000,
+    () => setScreensaverOpen(true)
   );
 
   const focusedMember = familyMembers.find((m) => m.id === focusedMemberId) ?? null;
@@ -277,12 +294,33 @@ export default function WallDisplay({
               </span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => setScreensaverOpen(true)}
+              className="mt-6 w-full rounded-2xl border-t-4 border-sky-500 bg-gray-900 p-6 text-left hover:bg-gray-800"
+            >
+              <span className="text-3xl font-medium">📷 Photos</span>
+              <span className="ml-4 text-lg text-gray-400">
+                {screensaverSettings.albumName
+                  ? `Play "${screensaverSettings.albumName}"`
+                  : "No album selected"}
+              </span>
+            </button>
+
             <div className="mt-8">
               <FuturePlaceholderTiles large />
             </div>
           </>
         )}
       </main>
+
+      {screensaverOpen && (
+        <PhotoScreensaver
+          photos={screensaverSettings.photos}
+          intervalSeconds={screensaverSettings.intervalSeconds}
+          onDismiss={() => setScreensaverOpen(false)}
+        />
+      )}
     </div>
   );
 }

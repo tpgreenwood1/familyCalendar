@@ -30,6 +30,11 @@ export const familyGroupUpdateSchema = z
   .object({
     name: trimmedString("name is required").optional(),
     holidayMode: z.boolean().optional(),
+    screensaverEnabled: z.boolean().optional(),
+    // null clears the selection (screensaver auto-disables -- see lib/photos.ts).
+    screensaverAlbumId: z.number().int().nullable().optional(),
+    screensaverIntervalSeconds: z.number().int().min(3).max(300).optional(),
+    screensaverIdleSeconds: z.number().int().min(30).max(3600).optional(),
   })
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: "no changes provided",
@@ -251,6 +256,23 @@ export const specialOccasionUpdateSchema = z
   .refine((data) => Object.values(data).some((value) => value !== undefined), {
     message: "no changes provided",
   });
+
+export const photoAlbumCreateSchema = z.object({
+  name: trimmedString("album name is required"),
+});
+
+export const photoAlbumUpdateSchema = z.object({
+  name: trimmedString("album name is required"),
+});
+
+// Recorded after the client uploads the file directly to Vercel Blob (see lib/photos.ts) --
+// this only persists the resulting metadata, it never receives the file itself.
+export const photoCreateSchema = z.object({
+  blobUrl: z.string().url("invalid blob url"),
+  blobPathname: trimmedString("pathname is required"),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+});
 
 export const todoCreateSchema = z.object({
   text: trimmedString("text is required"),

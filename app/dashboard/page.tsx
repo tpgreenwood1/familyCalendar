@@ -28,6 +28,7 @@ export default async function DashboardPage() {
     events,
     shoppingItems,
     specialOccasions,
+    screensaverSettings,
     error,
   } = await getDashboardData({ user, familyGroupId: membership.familyGroupId });
 
@@ -59,6 +60,7 @@ export default async function DashboardPage() {
             initialEvents={events}
             initialShoppingItems={shoppingItems}
             initialSpecialOccasions={specialOccasions}
+            initialScreensaverSettings={screensaverSettings}
           />
         </div>
       </main>

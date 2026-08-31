@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/routines", label: "Routines" },
   { href: "/shopping", label: "Shopping" },
   { href: "/occasions", label: "Occasions" },
+  { href: "/photos", label: "Photos" },
   { href: "/todo", label: "To Do" },
   { href: "/wall", label: "Wall" },
   { href: "/family", label: "Family" },

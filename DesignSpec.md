@@ -1005,6 +1005,57 @@ Future (explicitly out of scope for V1):
 
 ---
 
+# 16B. Photo Screensaver
+
+A full-screen rotating photo display, usable two ways:
+
+1. **Automatic** — on the Wall Display, after a configurable period of total inactivity, the
+   screen switches to a full-screen slideshow of a chosen album. Any touch dismisses it back
+   to whatever the wall was showing before.
+2. **Manual** — a "Photos" tile on the Family Dashboard and Wall Display opens the same
+   slideshow on demand, without waiting for the idle timer.
+
+Do not build this as a sync from an external photo service (the previous spec's Google
+Photos → Cloudflare R2 design no longer applies — see `DesignSpec-old.md`). Photos are
+uploaded directly by family members and stored in Vercel Blob, which is native to the
+existing Vercel deployment: no OAuth, no separate cloud account, no sync job. Direct
+browser-to-Blob uploads also avoid the platform's serverless function body-size limit, which
+matters for photo files.
+
+Model:
+
+    FamilyGroup
+        |         \
+        |          +-- screensaverEnabled / screensaverAlbumId / screensaverIntervalSeconds /
+        |              screensaverIdleSeconds   (household-wide settings, same shape as
+        |              holidayMode -- flat fields on FamilyGroup, not a separate settings table)
+        |
+        +-- PhotoAlbum
+                |
+                +-- Photo   (Vercel Blob URL + pathname; no binary data in Postgres)
+
+V1:
+
+- a family can have multiple named albums; each `Photo` belongs to exactly one album
+- a dedicated page lists albums, lets members create/rename/delete an album, and
+  upload/delete photos within one (drag-and-drop or file picker)
+- household-wide screensaver settings choose **one** album as "the screensaver album", an
+  interval in seconds between photos, and an idle delay (Wall Display only) before the
+  slideshow auto-starts
+- deleting the album currently selected for the screensaver disables the screensaver rather
+  than leaving it pointing at nothing
+- no role split to enforce yet (matching every other domain) — any signed-in family member
+  can manage albums/photos and change screensaver settings
+
+Explicitly out of scope for V1:
+
+- syncing from Google Photos, iCloud, or any other external photo service
+- multiple albums rotating together, or per-member/per-day album selection
+- video, live photos, or facial recognition/tagging
+- server-side thumbnailing/resizing pipeline — Blob serves originals directly
+
+---
+
 # 17. Family Dashboard
 
 The dashboard is the central product experience.
@@ -1808,6 +1859,35 @@ Implement:
 5. Wall Display tile — same digest, tap to open the full list, joins the existing
    focus-view/idle-return pattern
 6. Realtime (poll) — same seam as every other domain
+
+---
+
+# 42B. Phase 13 — Photo Screensaver
+
+Implement:
+
+1. `PhotoAlbum`/`Photo` models, plus `screensaverEnabled`/`screensaverAlbumId`/
+   `screensaverIntervalSeconds`/`screensaverIdleSeconds` on `FamilyGroup`
+   (`screensaverAlbumId` nullable, `onDelete: SetNull`, mirroring `FamilyMember.linkedUserId`)
+2. `lib/photos.ts` — album CRUD, photo add/delete (calling Vercel Blob's `del()` alongside
+   the DB row), and read/update for the screensaver settings, mirroring
+   `lib/specialOccasions.ts`'s shape as the newest/simplest precedent
+3. Upload flow: client calls Vercel Blob's `upload()` directly against a token-only
+   `app/api/photos/upload/route.ts` (`onBeforeGenerateToken` checks `requireSession()` +
+   family membership; no `onUploadCompleted` webhook, since that path doesn't fire on
+   localhost) — once the client-side upload resolves, the client POSTs the returned blob
+   URL/pathname to a normal REST endpoint to create the `Photo` row, the same
+   mutate-then-refetch shape every other domain already uses
+4. `app/api/photos/albums/route.ts` + `[id]/route.ts`, extend `app/api/family-group/route.ts`
+   with the new screensaver settings fields (same PATCH endpoint `holidayMode` already uses)
+5. `components/PhotoScreensaver.tsx` — full-screen image cycler, `setInterval` on the
+   configured interval, any touch/key dismisses (same idiom as `lib/useIdleReturn.ts`)
+6. A generalized idle-trigger hook (`lib/useIdleReturn.ts` extended or a sibling
+   `lib/useIdleTrigger.ts`) so `WallDisplay` can run two independent idle timers: the existing
+   30s one (focus view → overview) and a new configurable one (overview → screensaver)
+7. `/photos` page — album management, upload/delete, screensaver settings form
+8. A "Photos" tile on `FamilyDashboard` and `WallDisplay` that opens
+   `PhotoScreensaver` on demand, independent of the idle timer
 
 ---
 

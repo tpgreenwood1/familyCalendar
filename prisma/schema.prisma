@@ -22,6 +22,17 @@ model FamilyGroup {
   /// "disable" behaviour: RoutineSchedule.activeDuringHoliday decides which routines still
   /// generate occurrences while this is on -- see generateRoutineOccurrences in lib/routines.ts.
   holidayMode        Boolean             @default(false)
+  /// Photo Screensaver settings (DesignSpec.md §16B/§42B) -- flat fields on FamilyGroup,
+  /// same shape as holidayMode above, rather than a separate settings table.
+  screensaverEnabled Boolean             @default(false)
+  /// @unique because exactly one FamilyGroup can ever select a given PhotoAlbum (albums are
+  /// already family-scoped) -- onDelete: SetNull means deleting the selected album clears
+  /// this rather than leaving a dangling reference; lib/photos.ts#deleteAlbum additionally
+  /// flips screensaverEnabled back to false in that case.
+  screensaverAlbumId Int?                @unique
+  screensaverAlbum   PhotoAlbum?         @relation("ScreensaverAlbum", fields: [screensaverAlbumId], references: [id], onDelete: SetNull)
+  screensaverIntervalSeconds Int         @default(10)
+  screensaverIdleSeconds     Int         @default(300)
   createdAt          DateTime            @default(now())
   legacyUsers        LegacyUser[]
   familyMembers      FamilyMember[]
@@ -34,6 +45,7 @@ model FamilyGroup {
   routineOccurrences RoutineOccurrence[]
   shoppingList       ShoppingList?
   specialOccasions   SpecialOccasion[]
+  photoAlbums        PhotoAlbum[]        @relation("FamilyPhotoAlbums")
 }
 
 /// Pre-Better-Auth NextAuth user table (DesignSpec.md §6.1 migration step 2/3).
@@ -497,4 +509,38 @@ model SpecialOccasion {
   familyGroup   FamilyGroup         @relation(fields: [familyGroupId], references: [id], onDelete: Cascade)
 
   @@index([familyGroupId])
+}
+
+/// A named collection of photos (DesignSpec.md §16B) -- a family can have several; exactly
+/// one may be chosen as FamilyGroup.screensaverAlbum. Deleting an album cascades its Photo
+/// rows and (via onDelete: SetNull on FamilyGroup.screensaverAlbum) clears the screensaver
+/// selection if this was the chosen album.
+model PhotoAlbum {
+  id            Int         @id @default(autoincrement())
+  name          String
+  familyGroupId Int
+  familyGroup   FamilyGroup @relation("FamilyPhotoAlbums", fields: [familyGroupId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  photos        Photo[]
+  screensaverFor FamilyGroup? @relation("ScreensaverAlbum")
+
+  @@unique([familyGroupId, name])
+  @@index([familyGroupId])
+}
+
+/// One uploaded photo (DesignSpec.md §16B). The binary lives in Vercel Blob, not Postgres --
+/// `blobUrl` is the public serving URL, `blobPathname` is what lib/photos.ts passes back to
+/// Vercel Blob's `del()` on delete. No thumbnailing/resizing pipeline in V1 -- Blob serves
+/// the original directly.
+model Photo {
+  id           Int        @id @default(autoincrement())
+  albumId      Int
+  album        PhotoAlbum @relation(fields: [albumId], references: [id], onDelete: Cascade)
+  blobUrl      String
+  blobPathname String
+  width        Int?
+  height       Int?
+  createdAt    DateTime   @default(now())
+
+  @@index([albumId])
 }

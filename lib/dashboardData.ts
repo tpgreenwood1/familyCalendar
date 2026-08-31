@@ -6,6 +6,7 @@ import { listRoutineOccurrences, type RoutineOccurrenceDTO } from "@/lib/routine
 import { listEventsInRange, type CalendarOccurrenceDTO } from "@/lib/calendar";
 import { listShoppingItems, type ShoppingItemDTO } from "@/lib/shopping";
 import { listSpecialOccasions, type SpecialOccasionDTO } from "@/lib/specialOccasions";
+import { getScreensaverSettings, type ScreensaverSettingsDTO } from "@/lib/photos";
 import { getViewRange } from "@/lib/calendarViewRange";
 
 export type DashboardData = {
@@ -16,7 +17,17 @@ export type DashboardData = {
   events: CalendarOccurrenceDTO[];
   shoppingItems: ShoppingItemDTO[];
   specialOccasions: SpecialOccasionDTO[];
+  screensaverSettings: ScreensaverSettingsDTO;
   error?: string;
+};
+
+const EMPTY_SCREENSAVER_SETTINGS: ScreensaverSettingsDTO = {
+  enabled: false,
+  albumId: null,
+  albumName: null,
+  intervalSeconds: 10,
+  idleSeconds: 300,
+  photos: [],
 };
 
 /**
@@ -34,6 +45,7 @@ export async function getDashboardData(ctx: FamilyContext): Promise<DashboardDat
       events,
       shoppingItems,
       specialOccasions,
+      screensaverSettings,
     ] = await Promise.all([
       prisma.familyMember.findMany({
         where: { familyGroupId: ctx.familyGroupId },
@@ -48,6 +60,7 @@ export async function getDashboardData(ctx: FamilyContext): Promise<DashboardDat
       listEventsInRange(ctx, start, end),
       listShoppingItems(ctx),
       listSpecialOccasions(ctx),
+      getScreensaverSettings(ctx),
     ]);
     // Force the same Date -> ISO string shape the client will see from fetch(), since
     // React Server Component props otherwise keep real Date instances (see app/calendar/page.tsx).
@@ -60,6 +73,7 @@ export async function getDashboardData(ctx: FamilyContext): Promise<DashboardDat
         events,
         shoppingItems,
         specialOccasions,
+        screensaverSettings,
       })
     );
   } catch {
@@ -71,6 +85,7 @@ export async function getDashboardData(ctx: FamilyContext): Promise<DashboardDat
       events: [],
       shoppingItems: [],
       specialOccasions: [],
+      screensaverSettings: EMPTY_SCREENSAVER_SETTINGS,
       error: "Could not connect to database",
     };
   }

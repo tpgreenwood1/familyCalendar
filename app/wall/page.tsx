@@ -25,6 +25,7 @@ export default async function WallPage() {
     events,
     shoppingItems,
     specialOccasions,
+    screensaverSettings,
     error,
   } = await getDashboardData({ user, familyGroupId: membership.familyGroupId });
 
@@ -37,6 +38,7 @@ export default async function WallPage() {
       initialEvents={events}
       initialShoppingItems={shoppingItems}
       initialSpecialOccasions={specialOccasions}
+      initialScreensaverSettings={screensaverSettings}
       loadError={error}
     />
   );

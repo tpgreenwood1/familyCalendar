@@ -40,8 +40,8 @@ on top of.
 `lib/authz.ts` defines every mutating action as a member of the `Action` union
 (`family.update`, `familyMember.manage`, `todo.manage`, `invitation.create`,
 `calendarEvent.manage`, `chore.manage`, `choreOccurrence.manage`, `routine.manage`,
-`routineOccurrence.manage`, `shoppingItem.manage`, `specialOccasion.manage`) and a single
-`can(ctx, action)` predicate.
+`routineOccurrence.manage`, `shoppingItem.manage`, `specialOccasion.manage`,
+`photoAlbum.manage`, `photo.manage`) and a single `can(ctx, action)` predicate.
 There is no ADULT/CHILD role split yet — `can()` currently returns `true` for every action for
 any authenticated family member — but routes call `requireCan()` rather than assuming access,
 so a role split can be added inside `lib/authz.ts` later without touching any route. The one
@@ -72,8 +72,11 @@ fresh invite code so a brand-new family isn't left without one. Returns
 `{ familyGroupId, inviteCode? }`, 201. 409 if the caller already belongs to a family.
 
 ### `GET/PATCH /api/family-group`
-`GET`: session required, returns `{ name, holidayMode }`. `PATCH`: `requireCan("family.update")`;
-body `familyGroupUpdateSchema`; publishes `FAMILY_GROUP_UPDATED`.
+`GET`: session required, returns `{ name, holidayMode, screensaverEnabled, screensaverAlbumId,
+screensaverIntervalSeconds, screensaverIdleSeconds }`. `PATCH`: `requireCan("family.update")`;
+body `familyGroupUpdateSchema`; if `screensaverAlbumId` is set, it's first checked against
+`lib/photos.ts#assertAlbumBelongsToFamily` (404 if the album isn't the caller's) so a family
+can never point its screensaver at another family's album; publishes `FAMILY_GROUP_UPDATED`.
 
 ### `POST /api/invitations`
 `requireCan("invitation.create")`. Mints a new `Invitation`, returns `{ code }` (plaintext,
@@ -186,6 +189,47 @@ mangled by "first letter upper, rest lower".
 ### `PATCH/DELETE /api/special-occasions/[id]`
 `requireCan("specialOccasion.manage")`; delegate to
 `lib/specialOccasions.ts#updateSpecialOccasion`/`#deleteSpecialOccasion`.
+
+### `GET/POST /api/photos/albums`
+Thin wrappers over `lib/photos.ts#listAlbums`/`#createAlbum`. `GET`: session required;
+returns each album with a `photoCount` and `coverPhotoUrl` (its most recently added photo),
+not the full photo list. `POST`: `requireCan("photoAlbum.manage")`; body
+`photoAlbumCreateSchema` (`name`); 409 if the name is already taken in the family.
+
+### `GET/PATCH/DELETE /api/photos/albums/[id]`
+`GET`: session required; returns the album plus its full `photos` array, oldest first.
+`PATCH`: `requireCan("photoAlbum.manage")`; body `photoAlbumUpdateSchema` (`name`); 409 on a
+name clash. `DELETE`: `requireCan("photoAlbum.manage")`; deletes the album's blobs from
+Vercel Blob before the DB row (Postgres cascade doesn't reach external storage); if this was
+the family's selected screensaver album, also disables the screensaver rather than leaving
+it enabled with `screensaverAlbumId` cleared to nothing.
+
+### `POST /api/photos/albums/[id]/photos`
+`requireCan("photo.manage")`. Body `photoCreateSchema` (`blobUrl`, `blobPathname`, optional
+`width`/`height`) — this route never receives a file, only the metadata of one the client
+already uploaded directly to Vercel Blob via `POST /api/photos/upload`.
+
+### `DELETE /api/photos/[id]`
+`requireCan("photo.manage")`; 404 if the photo isn't in the caller's family (via
+`photo.album.familyGroupId`). Deletes the Blob object (`del()`) before the DB row.
+
+### `POST /api/photos/upload`
+`requireCan("photo.manage")`. Implements `@vercel/blob/client`'s `handleUpload` handshake —
+mints a short-lived, upload-scoped client token rather than proxying the file through this
+route. `onBeforeGenerateToken` reads the album id the client sent as `clientPayload`,
+verifies it belongs to the caller's family (`assertAlbumBelongsToFamily`, 404 otherwise),
+and restricts the token to image content types and a 20MB size cap. No `onUploadCompleted`
+webhook — that requires a publicly reachable callback URL, which localhost can't satisfy —
+so the client independently calls `POST /api/photos/albums/[id]/photos` once its `upload()`
+call resolves.
+
+### `GET /api/photos/screensaver`
+Session required, read-only. Returns `{ enabled, albumId, albumName, intervalSeconds,
+idleSeconds, photos }` — the household's screensaver settings *plus* the selected album's
+photos in one response, which is why it's separate from `GET /api/family-group` (that route
+returns the flat settings only, for the settings form; this one is what `WallDisplay`/
+`FamilyDashboard` actually render from). Settings themselves are still written through
+`PATCH /api/family-group`, same as `holidayMode`.
 
 ### `/api/auth/[...all]`
 Better Auth's own handler (`toNextJsHandler(auth)`) — sign-up, sign-in, sign-out, session

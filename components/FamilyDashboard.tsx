@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import type { FamilyMember, Todo } from "@prisma/client";
 import type { ChoreOccurrenceDTO } from "@/lib/chores";
@@ -7,11 +8,14 @@ import type { RoutineOccurrenceDTO } from "@/lib/routines";
 import type { CalendarOccurrenceDTO } from "@/lib/calendar";
 import type { ShoppingItemDTO } from "@/lib/shopping";
 import type { SpecialOccasionDTO } from "@/lib/specialOccasions";
+import type { ScreensaverSettingsDTO } from "@/lib/photos";
 import { useDashboardQueries } from "@/lib/useDashboardQueries";
+import { usePhotoScreensaver } from "@/lib/usePhotoScreensaver";
 import { getFamilyMemberColor } from "@/lib/familyMemberColors";
 import MemberDashboardCard from "@/components/MemberDashboardCard";
 import ShoppingList from "@/components/ShoppingList";
 import SpecialOccasionCard from "@/components/SpecialOccasionCard";
+import PhotoScreensaver from "@/components/PhotoScreensaver";
 import FuturePlaceholderTiles from "@/components/FuturePlaceholderTiles";
 
 function formatEventTime(occurrence: CalendarOccurrenceDTO): string {
@@ -30,6 +34,7 @@ export default function FamilyDashboard({
   initialEvents,
   initialShoppingItems,
   initialSpecialOccasions,
+  initialScreensaverSettings,
 }: {
   familyMembers: FamilyMember[];
   initialTodos: Todo[];
@@ -38,7 +43,11 @@ export default function FamilyDashboard({
   initialEvents: CalendarOccurrenceDTO[];
   initialShoppingItems: ShoppingItemDTO[];
   initialSpecialOccasions: SpecialOccasionDTO[];
+  initialScreensaverSettings: ScreensaverSettingsDTO;
 }) {
+  const [screensaverOpen, setScreensaverOpen] = useState(false);
+  const screensaverSettings = usePhotoScreensaver(initialScreensaverSettings);
+
   const {
     todos,
     choreOccurrences,
@@ -120,9 +129,30 @@ export default function FamilyDashboard({
 
       <ShoppingList initialItems={initialShoppingItems} />
 
+      <button
+        type="button"
+        onClick={() => setScreensaverOpen(true)}
+        className="mt-8 w-full rounded-xl border-t-4 border-sky-500 bg-gray-900 p-6 text-left hover:bg-gray-800"
+      >
+        <span className="text-2xl font-medium text-white">📷 Photos</span>
+        <span className="ml-4 text-sm text-gray-400">
+          {screensaverSettings.albumName
+            ? `Play "${screensaverSettings.albumName}"`
+            : "No album selected — set one up on the Photos page"}
+        </span>
+      </button>
+
       <div className="mt-8">
         <FuturePlaceholderTiles />
       </div>
+
+      {screensaverOpen && (
+        <PhotoScreensaver
+          photos={screensaverSettings.photos}
+          intervalSeconds={screensaverSettings.intervalSeconds}
+          onDismiss={() => setScreensaverOpen(false)}
+        />
+      )}
     </div>
   );
 }

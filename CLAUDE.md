@@ -170,6 +170,31 @@ none of its Google Photos/R2/idle-gallery design applies anymore.
   `components/SpecialOccasionCard.tsx` is the dashboard-only 7-day digest, and `WallDisplay`
   gained an `occasionsOpen` state mirroring `shoppingOpen` (including in `useIdleReturn`'s
   active-condition).
+- Phase 13 (Photo Screensaver) — `DesignSpec.md` §16B/§42B, `PhotoAlbum`/`Photo` models plus
+  four flat screensaver fields on `FamilyGroup` (`screensaverEnabled`/`screensaverAlbumId`/
+  `screensaverIntervalSeconds`/`screensaverIdleSeconds`), same shape as `holidayMode` rather
+  than a separate settings table. Photos are stored in Vercel Blob (`@vercel/blob`), not
+  synced from an external service — `lib/photos.ts` is the domain/service layer (album CRUD,
+  photo add/delete calling Blob's `del()` alongside the DB row, and
+  `getScreensaverSettings`). Uploads go client-to-Blob directly (`components/
+  PhotoManager.tsx`'s `upload()` call against `POST /api/photos/upload`, which only hands out
+  a family-scoped token via `onBeforeGenerateToken` — it never receives the file); there is
+  deliberately no `onUploadCompleted` webhook, since that requires a publicly reachable URL
+  that localhost can't satisfy, so the client instead POSTs the resolved blob's URL/pathname
+  to `POST /api/photos/albums/[id]/photos` once `upload()` resolves, keeping dev/prod
+  behaviour identical. `screensaverAlbumId` is `@unique` with `onDelete: SetNull`; deleting
+  the album currently selected for the screensaver also flips `screensaverEnabled` back to
+  `false` explicitly (`lib/photos.ts#deleteAlbum`), rather than leaving it enabled with no
+  album. Two entry points share the same `PhotoScreensaver` component and the same
+  `lib/usePhotoScreensaver.ts` query (`["photo-screensaver"]`, reading `GET
+  /api/photos/screensaver`): a manual "Photos" tile on both `FamilyDashboard` and
+  `WallDisplay`, and — Wall Display only — a second, independent `lib/useIdleReturn.ts` timer
+  (the existing 30s focus→overview one is unaffected) that auto-launches it after the
+  household's configured idle delay whenever the wall is sitting on the plain overview.
+  `/photos` (`components/PhotoManager.tsx`) is the management page: album create/rename/
+  delete, per-album photo upload/delete, and the screensaver settings form, all against the
+  same `PATCH /api/family-group` endpoint `holidayMode` already used for its enable/album/
+  interval/idle fields.
 - Documentation (§48) — `docs/SPEC.md` (product baseline), `docs/ARCHITECTURE.md` (layers,
   directory map, request flow), `docs/DATABASE.md` (schema), `docs/API.md` (every route), and
   `docs/ROADMAP.md` (phase-by-phase status, superseding the ad hoc "Done so far"/"Not built

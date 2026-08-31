@@ -132,6 +132,23 @@ occurrence date", "days until", and "years since"/"turning N" are computed on ev
 in a non-leap candidate year) rather than generated and stored, so there's no index beyond
 `familyGroupId` and no unique constraint (duplicate titles/dates — e.g. twins — are legitimate).
 
+## Photos
+
+**`FamilyGroup`** carries four flat screensaver fields (`screensaverEnabled`,
+`screensaverAlbumId`, `screensaverIntervalSeconds`, `screensaverIdleSeconds`) — same shape as
+`holidayMode` above, rather than a separate settings table. **`PhotoAlbum`** is a named
+collection belonging to the family; **`Photo`** stores only Blob metadata (`blobUrl`,
+`blobPathname`, optional `width`/`height`) — the binary lives in Vercel Blob, not Postgres.
+`screensaverAlbumId` is `@unique` (a `PhotoAlbum` can be selected by at most one `FamilyGroup`
+— trivially true since albums are already family-scoped, but the constraint makes it
+explicit) with `onDelete: SetNull`; deleting the currently-selected album clears the FK, and
+`lib/photos.ts#deleteAlbum` additionally flips `screensaverEnabled` back to `false` in that
+transaction, rather than leaving the screensaver enabled with nothing to show. Deleting a
+`PhotoAlbum` cascades its `Photo` rows in Postgres, but the Blob objects themselves are
+deleted first via Vercel Blob's `del()` (`lib/photos.ts`), since Postgres cascade doesn't
+reach external storage. No thumbnailing/resizing pipeline in V1 — Blob serves the original
+file directly.
+
 ## Family isolation
 
 There is no database-level tenant isolation (no RLS, no per-family schema) — every query that
@@ -139,8 +156,8 @@ returns or mutates domain data must filter by `familyGroupId`, either directly o
 relation filter (e.g. `Todo`'s `where: { familyMember: { familyGroupId } }`). `lib/authz.ts#requireSession()`
 is the only place a route derives `familyGroupId`, from the caller's session — it is never
 accepted from the request body or query string. Every domain service function in `lib/`
-(`calendar.ts`, `chores.ts`, `routines.ts`, `shopping.ts`) takes a `FamilyContext` (`{ user,
-familyGroupId }`) as its first argument for this reason. `lib/authz.test.ts` has the unit
+(`calendar.ts`, `chores.ts`, `routines.ts`, `shopping.ts`, `photos.ts`) takes a
+`FamilyContext` (`{ user, familyGroupId }`) as its first argument for this reason. `lib/authz.test.ts` has the unit
 coverage for the permission layer this depends on; a family-isolation integration test (can
 family A read/write family B's rows through the API) is still on the Testing Strategy backlog
 — see `docs/ROADMAP.md`.

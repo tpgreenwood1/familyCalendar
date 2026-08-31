@@ -54,7 +54,9 @@ export type Action =
   | "routine.manage"
   | "routineOccurrence.manage"
   | "shoppingItem.manage"
-  | "specialOccasion.manage";
+  | "specialOccasion.manage"
+  | "photoAlbum.manage"
+  | "photo.manage";
 
 export function can(context: FamilyContext, action: Action): boolean {
   switch (action) {
@@ -69,6 +71,8 @@ export function can(context: FamilyContext, action: Action): boolean {
     case "routineOccurrence.manage":
     case "shoppingItem.manage":
     case "specialOccasion.manage":
+    case "photoAlbum.manage":
+    case "photo.manage":
       return true;
   }
 }

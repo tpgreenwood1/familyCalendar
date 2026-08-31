@@ -135,7 +135,7 @@ export default function SpecialOccasionModal({
               className="rounded-lg bg-gray-800 px-4 py-3 text-lg text-white focus:outline-none focus:ring-2 focus:ring-gray-500"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Use the birth year (birthdays) or the year the event happened (anniversaries) — it's used to work out the age/years count.
+              Use the birth year (birthdays) or the year the event happened (anniversaries) — it&apos;s used to work out the age/years count.
             </p>
           </div>
 

@@ -16,6 +16,7 @@ const TILES = [
   { href: "/routines", icon: "⏰", label: "Routines" },
   { href: "/shopping", icon: "🛒", label: "Shopping List" },
   { href: "/occasions", icon: "🎂", label: "Special Occasions" },
+  { href: "/photos", icon: "📷", label: "Photos" },
   { href: "/wall", icon: "🖥️", label: "Wall Display" },
   { href: "/family", icon: "👪", label: "Family" },
   { href: "/settings", icon: "⚙️", label: "Settings" },
@@ -48,11 +49,6 @@ export default async function Home() {
               <span className="text-xl font-medium">{tile.label}</span>
             </Link>
           ))}
-          <div className="flex w-56 flex-col items-center gap-3 rounded-2xl bg-gray-900/50 px-6 py-8 text-gray-500">
-            <span className="text-4xl grayscale opacity-50">📷</span>
-            <span className="text-xl font-medium">Photos</span>
-            <span className="text-xs text-gray-600">Coming soon</span>
-          </div>
         </div>
       </main>
       <Footer />
